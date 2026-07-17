@@ -1,0 +1,39 @@
+# Dependency folders
+node_modules/
+**/node_modules/
+
+# Next.js build output
+.next/
+**/.next/
+
+# Build outputs
+dist/
+build/
+**/dist/
+**/build/
+
+# Local env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+**/.env
+**/.env.local
+
+# Storage folder (contains user projects uploaded, we don't want to commit these!)
+backend/storage/
+**/storage/
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+.DS_Store
+Thumbs.db
