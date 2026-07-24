@@ -7,19 +7,12 @@ import { MessageContent } from "./MessageContent";
 
 const MODEL_OPTIONS = [
   {
-    group: "Google Gemini (Recommended)",
-    models: [
-      { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", badge: "⚡ Fastest & Best Tool Calling ⭐" },
-      { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro", badge: "🧠 Smartest" },
-      { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash", badge: "💡 Balanced" },
-    ],
-  },
-  {
     group: "Groq Models",
     models: [
-      { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", badge: "⚡ Fast 70B" },
+      { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", badge: "⭐ Best tool calling" },
+      { value: "openai/gpt-oss-120b", label: "GPT-OSS 120B", badge: "🧠 Reasoning + tools" },
+      { value: "openai/gpt-oss-20b", label: "GPT-OSS 20B", badge: "⚡ Very fast" },
       { value: "llama-3.1-8b-instant", label: "Llama 3.1 8B", badge: "⚡ Instant" },
-      { value: "deepseek-r1-distill-llama-70b", label: "DeepSeek R1 70B", badge: "🧠 Reasoning" },
     ],
   },
 ];

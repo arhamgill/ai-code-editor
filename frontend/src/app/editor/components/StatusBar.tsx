@@ -11,15 +11,10 @@ interface StatusBarProps {
 }
 
 const MODEL_LABELS: Record<string, string> = {
-  "gemini-2.5-flash": "✦ Gemini 2.5 Flash",
-  "gemini-2.5-pro": "✦ Gemini 2.5 Pro",
-  "gemini-2.0-flash": "✦ Gemini 2.0 Flash",
-  "llama3-groq-70b-8192-tool-use-preview": "⚡ Llama 3 70B",
-  "llama3-groq-8b-8192-tool-use-preview": "⚡ Llama 3 8B",
   "llama-3.3-70b-versatile": "⚡ Llama 3.3 70B",
-  "llama-3.1-70b-versatile": "⚡ Llama 3.1 70B",
+  "openai/gpt-oss-120b": "⚡ GPT-OSS 120B",
+  "openai/gpt-oss-20b": "⚡ GPT-OSS 20B",
   "llama-3.1-8b-instant": "⚡ Llama 3.1 8B",
-  "mixtral-8x7b-32768": "⚡ Mixtral 8x7B",
 };
 
 export function StatusBar({ cursorPosition, activeFilePath, selectedModel, selectionInfo }: StatusBarProps) {

@@ -1,6 +1,5 @@
 import express from "express";
 import { getAuth } from "@clerk/express";
-import { GoogleGenAI } from "@google/genai";
 import Groq from "groq-sdk";
 import fs from "fs/promises";
 import path from "path";
@@ -199,76 +198,6 @@ function parseGroqFailedGeneration(err) {
   return calls;
 }
 
-// Tool declarations for Gemini API
-const tools = [
-  {
-    functionDeclarations: [
-      {
-        name: "list_files",
-        description: "List all files and folders recursively in the active workspace project root.",
-        parameters: { type: "OBJECT", properties: {} }
-      },
-      {
-        name: "read_file",
-        description: "Read the full contents of a file in the workspace.",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            path: { type: "STRING", description: "The relative file path to read from the project root." }
-          },
-          required: ["path"]
-        }
-      },
-      {
-        name: "write_file",
-        description: "Write content to a file, replacing its content entirely. Can edit existing files.",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            path: { type: "STRING", description: "The relative file path to write to." },
-            content: { type: "STRING", description: "The full content to write to the file." }
-          },
-          required: ["path", "content"]
-        }
-      },
-      {
-        name: "create_file",
-        description: "Create a new file in the workspace with initial content.",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            path: { type: "STRING", description: "The relative file path to create." },
-            content: { type: "STRING", description: "The initial content of the file." }
-          },
-          required: ["path", "content"]
-        }
-      },
-      {
-        name: "delete_file",
-        description: "Delete a file recursively in the workspace.",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            path: { type: "STRING", description: "The relative file path to delete." }
-          },
-          required: ["path"]
-        }
-      },
-      {
-        name: "search_in_files",
-        description: "Search for a string pattern across all text files in the project workspace recursively.",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            query: { type: "STRING", description: "The text string to search for." }
-          },
-          required: ["query"]
-        }
-      }
-    ]
-  }
-];
-
 function getGroqTools() {
   return [
     {
@@ -354,40 +283,34 @@ function getGroqTools() {
   ];
 }
 
-// POST /api/agent/stream - Agentic streaming endpoint with Gemini & Groq
+// POST /api/agent/stream - Agentic streaming endpoint (Groq, tool-calling)
 router.post("/stream", async (req, res) => {
   const auth = getAuth(req);
   if (!auth.userId) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const { projectId, prompt, history = [], model = "gemini-2.5-flash" } = req.body;
-  const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"];
-  // Groq models that support tool calling. Decommissioned/unreliable ones
-  // (llama-3.1-70b, mixtral-8x7b, qwen-2.5-32b) have been removed.
-  const GROQ_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "deepseek-r1-distill-llama-70b"];
-  
-  const isGroq = GROQ_MODELS.includes(model);
-  const selectedModel = isGroq ? model : (GEMINI_MODELS.includes(model) ? model : "gemini-2.5-flash");
+  const { projectId, prompt, history = [], model } = req.body;
+  // Groq production models that support tool calling. Update from the Groq
+  // models page as their lineup changes: https://console.groq.com/docs/models
+  const GROQ_MODELS = [
+    "llama-3.3-70b-versatile",
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "llama-3.1-8b-instant",
+  ];
+  const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+  const selectedModel = GROQ_MODELS.includes(model) ? model : DEFAULT_MODEL;
 
   if (!projectId || !prompt) {
     return res.status(400).json({ error: "Bad Request", message: "projectId and prompt are required." });
   }
 
-  const geminiApiKey = process.env.GEMINI_API_KEY;
   const groqApiKey = process.env.GROQ_API_KEY;
-
-  if (!isGroq && !geminiApiKey) {
+  if (!groqApiKey) {
     return res.status(500).json({
       error: "Configuration Error",
-      message: "GEMINI_API_KEY is not defined in backend environmental variables."
-    });
-  }
-
-  if (isGroq && !groqApiKey) {
-    return res.status(500).json({
-      error: "Configuration Error",
-      message: "GROQ_API_KEY is not defined in backend environmental variables."
+      message: "GROQ_API_KEY is not defined in backend environment variables."
     });
   }
 
@@ -443,8 +366,7 @@ Tool rules:
 - All paths must be relative to the project root.
 - You cannot run terminal commands; you only edit files. The user runs the app via the built-in Preview (which boots a WebContainer and runs 'next dev').`;
 
-    if (isGroq) {
-      // 3. Initialize Groq client + messages
+    // Initialize the Groq client + messages
       const groqClient = new Groq({ apiKey: groqApiKey });
       const groqMessages = [{ role: "system", content: systemInstruction }];
       for (const msg of history) {
@@ -585,7 +507,7 @@ Tool rules:
           console.error(`[Groq Path] Chat completion error with model ${selectedModel}:`, err.message);
           res.write(`data: ${JSON.stringify({
             type: "error",
-            message: `Groq model error: ${err.message}. Try **Gemini 2.5 Flash** for the most reliable tool calling.`
+            message: `Groq model error: ${err.message}. Try **Llama 3.3 70B** for the most reliable tool calling.`
           })}\n\n`);
           keepLooping = false;
           break;
@@ -626,186 +548,6 @@ Tool rules:
         res.write("data: [DONE]\n\n");
       }
 
-    } else {
-      // 3. Initialize Gemini
-      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-
-      // 4. Map user-supplied chat history to Gemini structure
-      const contents = [];
-      for (const msg of history) {
-        if (msg.role === "user" || msg.role === "assistant") {
-          contents.push({
-            role: msg.role === "assistant" ? "model" : "user",
-            parts: [{ text: msg.content }]
-          });
-        }
-      }
-      
-      // Add current user prompt
-      contents.push({
-        role: "user",
-        parts: [{ text: prompt }]
-      });
-
-      let keepLooping = true;
-      let loopIteration = 0;
-      const maxIterations = 15; // Safeguard against infinite tool loops
-
-      while (keepLooping && loopIteration < maxIterations) {
-        loopIteration++;
-        let modelParts = [];
-        let responseText = "";
-        let functionCalls = [];
-
-        // Start stream call to Gemini
-        const responseStream = await ai.models.generateContentStream({
-          model: selectedModel,
-          contents: contents,
-          config: {
-            systemInstruction,
-            tools
-          }
-        });
-
-        for await (const chunk of responseStream) {
-          if (res.writableEnded) break;
-
-          if (chunk.candidates?.[0]?.content?.parts) {
-            modelParts.push(...chunk.candidates[0].content.parts);
-          }
-          if (chunk.text) {
-            responseText += chunk.text;
-            res.write(`data: ${JSON.stringify({ type: "thinking", text: chunk.text })}\n\n`);
-          }
-          if (chunk.functionCalls) {
-            functionCalls.push(...chunk.functionCalls);
-          }
-        }
-
-        if (res.writableEnded) break;
-
-        // Handle function calls if any
-        if (functionCalls.length > 0) {
-          keepLooping = true;
-          const toolResults = [];
-
-          // Execute functions sequentially
-          for (const call of functionCalls) {
-            if (res.writableEnded) break;
-
-            // Notify frontend of active tool execution
-            res.write(`data: ${JSON.stringify({ type: "tool_call", name: call.name, args: call.args })}\n\n`);
-
-            let resultData;
-            try {
-              switch (call.name) {
-                case "list_files": {
-                  const tree = await readDirectoryTree(projectDir, projectDir);
-                  resultData = { files: tree };
-                  break;
-                }
-                case "read_file": {
-                  const target = getSecurePath(auth.userId, project.name, call.args.path);
-                  const fileContent = await fs.readFile(target, "utf8");
-                  resultData = { content: fileContent };
-                  break;
-                }
-                case "write_file": {
-                  const target = getSecurePath(auth.userId, project.name, call.args.path);
-                  let oldContent = "";
-                  try {
-                    oldContent = await fs.readFile(target, "utf8");
-                  } catch (_) {}
-
-                  await fs.writeFile(target, call.args.content, "utf8");
-                  const diff = getLineDiff(oldContent, call.args.content);
-
-                  resultData = { success: true };
-                  // Send change card event
-                  res.write(`data: ${JSON.stringify({
-                    type: "file_change",
-                    action: "Modified",
-                    path: call.args.path,
-                    added: diff.added,
-                    removed: diff.removed
-                  })}\n\n`);
-                  break;
-                }
-                case "create_file": {
-                  const target = getSecurePath(auth.userId, project.name, call.args.path);
-                  const dir = path.dirname(target);
-                  await fs.mkdir(dir, { recursive: true });
-                  await fs.writeFile(target, call.args.content, "utf8");
-                  const diff = getLineDiff("", call.args.content);
-
-                  resultData = { success: true };
-                  // Send change card event
-                  res.write(`data: ${JSON.stringify({
-                    type: "file_change",
-                    action: "Created",
-                    path: call.args.path,
-                    added: diff.added,
-                    removed: 0
-                  })}\n\n`);
-                  break;
-                }
-                case "delete_file": {
-                  const target = getSecurePath(auth.userId, project.name, call.args.path);
-                  await fs.rm(target, { recursive: true, force: true });
-                  resultData = { success: true };
-                  // Send change card event
-                  res.write(`data: ${JSON.stringify({
-                    type: "file_change",
-                    action: "Deleted",
-                    path: call.args.path,
-                    added: 0,
-                    removed: 0
-                  })}\n\n`);
-                  break;
-                }
-                case "search_in_files": {
-                  const matches = await searchFilesRecursively(projectDir, call.args.query, projectDir);
-                  resultData = { matches };
-                  break;
-                }
-                default:
-                  throw new Error(`Unknown function name: ${call.name}`);
-              }
-            } catch (err) {
-              resultData = { error: err.message };
-            }
-
-            toolResults.push(resultData);
-          }
-
-          // Push model's turn to history
-          contents.push({
-            role: "model",
-            parts: modelParts
-          });
-
-          // Push tool responses to history
-          contents.push({
-            role: "tool",
-            parts: functionCalls.map((c, idx) => ({
-              functionResponse: {
-                name: c.name,
-                id: c.id,
-                response: toolResults[idx]
-              }
-            }))
-          });
-
-        } else {
-          // No function calls from Gemini, loop is complete!
-          keepLooping = false;
-        }
-      }
-
-      if (!res.writableEnded) {
-        res.write("data: [DONE]\n\n");
-      }
-    }
   } catch (err) {
     console.error("AI Agent error:", err);
     if (!res.writableEnded) {

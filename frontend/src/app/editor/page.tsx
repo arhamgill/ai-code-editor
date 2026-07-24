@@ -105,7 +105,7 @@ function EditorContent() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingActive, setStreamingActive] = useState(false);
   const [attachedFile, setAttachedFile] = useState<string | null>(null);
-  const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
+  const [selectedModel, setSelectedModel] = useState("llama-3.3-70b-versatile");
 
   // ── AI Safety ────────────────────────────────────────────
   const [fileSnapshotsBefore, setFileSnapshotsBefore] = useState<Record<string, string>>({});

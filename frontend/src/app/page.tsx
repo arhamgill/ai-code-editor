@@ -105,8 +105,8 @@ const FEATURES = [
         <path d="M2 12l10 5 10-5" />
       </svg>
     ),
-    title: "Multiple AI Models",
-    desc: "Switch between Gemini 2.5 Pro, Flash, Llama 3, Mixtral, and more — all from one dropdown.",
+    title: "Fast Groq Models",
+    desc: "Powered by Groq's blazing-fast inference — Llama 3.3 70B, GPT-OSS, and more, all from one dropdown.",
     accent: "#ffffff",
   },
   {
@@ -167,7 +167,7 @@ const STEPS = [
 // ── Tech badges ──────────────────────────────────────────────
 const TECH_STACK = [
   "Next.js 15", "App Router", "TypeScript", "Tailwind CSS",
-  "Gemini", "Groq", "Monaco Editor", "WebContainers", "Clerk Auth", "PostgreSQL",
+  "Groq", "Llama 3.3", "Monaco Editor", "WebContainers", "Clerk Auth", "PostgreSQL",
 ];
 
 export default function Home() {
@@ -430,7 +430,7 @@ export default function Home() {
         </div>
         <div className="footer-links">
           <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
-            © {new Date().getFullYear()} Forge · Built with Next.js &amp; Gemini
+            © {new Date().getFullYear()} Forge · Built with Next.js &amp; Groq
           </span>
         </div>
       </footer>
