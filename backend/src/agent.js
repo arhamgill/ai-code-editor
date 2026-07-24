@@ -158,6 +158,47 @@ function getLineDiff(oldContent, newContent) {
   return { added, removed };
 }
 
+// Some Groq/Llama models emit tool calls in a text format like
+// `<function=read_file,{"path":"app/page.tsx"}>` that Groq's server rejects with a
+// `tool_use_failed` 400 (it mis-parses the name + args). This extracts the intended
+// tool call(s) from the error's `failed_generation` so we can run them ourselves.
+function parseGroqFailedGeneration(err) {
+  let haystack = "";
+  try {
+    haystack =
+      err?.error?.failed_generation ||
+      err?.error?.error?.failed_generation ||
+      "";
+  } catch (_) {}
+  if (!haystack) {
+    try {
+      haystack = `${err?.message || ""} ${JSON.stringify(err?.error ?? "")}`;
+    } catch (_) {
+      haystack = err?.message || "";
+    }
+  }
+
+  const calls = [];
+  const re = /<function=([a-zA-Z0-9_]+)\s*,?\s*(\{[\s\S]*?\})\s*>/g;
+  let m;
+  while ((m = re.exec(haystack)) !== null) {
+    const name = m[1];
+    let args = {};
+    const rawArgs = m[2];
+    try {
+      args = JSON.parse(rawArgs);
+    } catch (_) {
+      try {
+        args = JSON.parse(rawArgs.replace(/\\"/g, '"'));
+      } catch (_) {
+        args = {};
+      }
+    }
+    calls.push({ name, args });
+  }
+  return calls;
+}
+
 // Tool declarations for Gemini API
 const tools = [
   {
@@ -322,7 +363,9 @@ router.post("/stream", async (req, res) => {
 
   const { projectId, prompt, history = [], model = "gemini-2.5-flash" } = req.body;
   const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"];
-  const GROQ_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "deepseek-r1-distill-llama-70b", "qwen-2.5-32b"];
+  // Groq models that support tool calling. Decommissioned/unreliable ones
+  // (llama-3.1-70b, mixtral-8x7b, qwen-2.5-32b) have been removed.
+  const GROQ_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "deepseek-r1-distill-llama-70b"];
   
   const isGroq = GROQ_MODELS.includes(model);
   const selectedModel = isGroq ? model : (GEMINI_MODELS.includes(model) ? model : "gemini-2.5-flash");
@@ -421,6 +464,96 @@ Tool rules:
 
       console.log(`[Groq Path] Starting SDK-based execution loop. Tools count: ${groqTools.length}`);
 
+      // Executes one tool call, emitting SSE file_change events for writes/creates/deletes.
+      const executeToolCall = async (callName, parsedArgs) => {
+        switch (callName) {
+          case "list_files": {
+            const tree = await readDirectoryTree(projectDir, projectDir);
+            return { files: tree };
+          }
+          case "read_file": {
+            const target = getSecurePath(auth.userId, project.name, parsedArgs.path);
+            const fileContent = await fs.readFile(target, "utf8");
+            return { content: fileContent };
+          }
+          case "write_file": {
+            const target = getSecurePath(auth.userId, project.name, parsedArgs.path);
+            let oldContent = "";
+            try { oldContent = await fs.readFile(target, "utf8"); } catch (_) {}
+            await fs.writeFile(target, parsedArgs.content, "utf8");
+            const diff = getLineDiff(oldContent, parsedArgs.content);
+            res.write(`data: ${JSON.stringify({ type: "file_change", action: "Modified", path: parsedArgs.path, added: diff.added, removed: diff.removed })}\n\n`);
+            return { success: true };
+          }
+          case "create_file": {
+            const target = getSecurePath(auth.userId, project.name, parsedArgs.path);
+            await fs.mkdir(path.dirname(target), { recursive: true });
+            await fs.writeFile(target, parsedArgs.content, "utf8");
+            const diff = getLineDiff("", parsedArgs.content);
+            res.write(`data: ${JSON.stringify({ type: "file_change", action: "Created", path: parsedArgs.path, added: diff.added, removed: 0 })}\n\n`);
+            return { success: true };
+          }
+          case "delete_file": {
+            const target = getSecurePath(auth.userId, project.name, parsedArgs.path);
+            await fs.rm(target, { recursive: true, force: true });
+            res.write(`data: ${JSON.stringify({ type: "file_change", action: "Deleted", path: parsedArgs.path, added: 0, removed: 0 })}\n\n`);
+            return { success: true };
+          }
+          case "search_in_files": {
+            const matches = await searchFilesRecursively(projectDir, parsedArgs.query, projectDir);
+            return { matches };
+          }
+          default:
+            throw new Error(`Unknown function name: ${callName}`);
+        }
+      };
+
+      // Runs a list of tool_calls, streaming tool_call events and returning results.
+      const runToolCalls = async (calls) => {
+        const results = [];
+        for (const tc of calls) {
+          if (res.writableEnded) break;
+          let parsedArgs = {};
+          try {
+            parsedArgs = JSON.parse(tc.function.arguments);
+          } catch (_) {
+            console.error(`[Groq Path] Failed to parse args for '${tc.function.name}':`, tc.function.arguments);
+          }
+          console.log(`[Groq Path] Executing tool: ${tc.function.name}`, parsedArgs);
+          res.write(`data: ${JSON.stringify({ type: "tool_call", name: tc.function.name, args: parsedArgs })}\n\n`);
+          let resultData;
+          try {
+            resultData = await executeToolCall(tc.function.name, parsedArgs);
+          } catch (err) {
+            console.error(`[Groq Path] Tool execution error for '${tc.function.name}':`, err.message);
+            resultData = { error: err.message };
+          }
+          results.push(resultData);
+        }
+        return results;
+      };
+
+      // Thread an assistant tool_calls turn + its tool results back into the conversation.
+      const appendToolTurn = (calls, results) => {
+        groqMessages.push({
+          role: "assistant",
+          content: null,
+          tool_calls: calls.map(tc => ({
+            id: tc.id,
+            type: "function",
+            function: { name: tc.function.name, arguments: tc.function.arguments }
+          }))
+        });
+        calls.forEach((tc, idx) => {
+          groqMessages.push({
+            role: "tool",
+            tool_call_id: tc.id,
+            name: tc.function.name,
+            content: JSON.stringify(results[idx])
+          });
+        });
+      };
+
       while (keepLooping && loopIteration < maxIterations) {
         loopIteration++;
         console.log(`[Groq Path] Loop iteration ${loopIteration}...`);
@@ -434,10 +567,25 @@ Tool rules:
             tool_choice: "auto"
           });
         } catch (err) {
+          // Recover from Groq's `tool_use_failed` by parsing the intended call out
+          // of `failed_generation` and executing it ourselves, then continue the loop.
+          const recovered = parseGroqFailedGeneration(err);
+          if (recovered.length > 0 && !res.writableEnded) {
+            console.log(`[Groq Path] Recovered ${recovered.length} tool call(s) from failed_generation.`);
+            const synthCalls = recovered.map((c, i) => ({
+              id: `call_recovered_${loopIteration}_${i}`,
+              type: "function",
+              function: { name: c.name, arguments: JSON.stringify(c.args || {}) }
+            }));
+            const results = await runToolCalls(synthCalls);
+            appendToolTurn(synthCalls, results);
+            keepLooping = true;
+            continue;
+          }
           console.error(`[Groq Path] Chat completion error with model ${selectedModel}:`, err.message);
           res.write(`data: ${JSON.stringify({
             type: "error",
-            message: `Groq tool error: ${err.message}. Please switch to **Gemini 2.5 Flash** using the model dropdown above.`
+            message: `Groq model error: ${err.message}. Try **Gemini 2.5 Flash** for the most reliable tool calling.`
           })}\n\n`);
           keepLooping = false;
           break;
@@ -469,99 +617,8 @@ Tool rules:
           keepLooping = false;
         } else {
           keepLooping = true;
-          const toolResults = [];
-
-          for (const tc of toolCalls) {
-            if (res.writableEnded) break;
-
-            const callName = tc.function.name;
-            let parsedArgs = {};
-            try {
-              parsedArgs = JSON.parse(tc.function.arguments);
-            } catch (err) {
-              console.error(`[Groq Path] Failed to parse args for '${callName}':`, tc.function.arguments);
-              parsedArgs = {};
-            }
-
-            console.log(`[Groq Path] Executing tool: ${callName}`, parsedArgs);
-            res.write(`data: ${JSON.stringify({ type: "tool_call", name: callName, args: parsedArgs })}\n\n`);
-
-            let resultData;
-            try {
-              switch (callName) {
-                case "list_files": {
-                  const tree = await readDirectoryTree(projectDir, projectDir);
-                  resultData = { files: tree };
-                  break;
-                }
-                case "read_file": {
-                  const target = getSecurePath(auth.userId, project.name, parsedArgs.path);
-                  const fileContent = await fs.readFile(target, "utf8");
-                  resultData = { content: fileContent };
-                  break;
-                }
-                case "write_file": {
-                  const target = getSecurePath(auth.userId, project.name, parsedArgs.path);
-                  let oldContent = "";
-                  try { oldContent = await fs.readFile(target, "utf8"); } catch (_) {}
-                  await fs.writeFile(target, parsedArgs.content, "utf8");
-                  const diff = getLineDiff(oldContent, parsedArgs.content);
-                  resultData = { success: true };
-                  res.write(`data: ${JSON.stringify({ type: "file_change", action: "Modified", path: parsedArgs.path, added: diff.added, removed: diff.removed })}\n\n`);
-                  break;
-                }
-                case "create_file": {
-                  const target = getSecurePath(auth.userId, project.name, parsedArgs.path);
-                  await fs.mkdir(path.dirname(target), { recursive: true });
-                  await fs.writeFile(target, parsedArgs.content, "utf8");
-                  const diff = getLineDiff("", parsedArgs.content);
-                  resultData = { success: true };
-                  res.write(`data: ${JSON.stringify({ type: "file_change", action: "Created", path: parsedArgs.path, added: diff.added, removed: 0 })}\n\n`);
-                  break;
-                }
-                case "delete_file": {
-                  const target = getSecurePath(auth.userId, project.name, parsedArgs.path);
-                  await fs.rm(target, { recursive: true, force: true });
-                  resultData = { success: true };
-                  res.write(`data: ${JSON.stringify({ type: "file_change", action: "Deleted", path: parsedArgs.path, added: 0, removed: 0 })}\n\n`);
-                  break;
-                }
-                case "search_in_files": {
-                  const matches = await searchFilesRecursively(projectDir, parsedArgs.query, projectDir);
-                  resultData = { matches };
-                  break;
-                }
-                default:
-                  throw new Error(`Unknown function name: ${callName}`);
-              }
-            } catch (err) {
-              console.error(`[Groq Path] Tool execution error for '${callName}':`, err.message);
-              resultData = { error: err.message };
-            }
-
-            toolResults.push(resultData);
-          }
-
-          // Append assistant message with tool_calls
-          groqMessages.push({
-            role: "assistant",
-            content: message.content || null,
-            tool_calls: toolCalls.map(tc => ({
-              id: tc.id,
-              type: "function",
-              function: { name: tc.function.name, arguments: tc.function.arguments }
-            }))
-          });
-
-          // Append each tool result
-          toolCalls.forEach((tc, idx) => {
-            groqMessages.push({
-              role: "tool",
-              tool_call_id: tc.id,
-              name: tc.function.name,
-              content: JSON.stringify(toolResults[idx])
-            });
-          });
+          const toolResults = await runToolCalls(toolCalls);
+          appendToolTurn(toolCalls, toolResults);
         }
       }
 
