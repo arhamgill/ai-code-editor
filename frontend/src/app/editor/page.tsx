@@ -509,13 +509,6 @@ function EditorContent() {
     setMessages([]);
   }, [activeProject]);
 
-  const applyCodeBlock = useCallback((code: string) => {
-    if (!activeFilePath) { addToast("No active file to apply code to.", "error"); return; }
-    setTempContent(code);
-    setUnsavedChanges((prev) => ({ ...prev, [activeFilePath]: true }));
-    addToast(`Code applied to ${activeFilePath.split("/").pop()}!`, "success");
-  }, [activeFilePath, addToast]);
-
   const handleViewDiff = useCallback((filePath: string) => {
     const before = fileSnapshotsBefore[filePath] ?? "";
     const after = tabContents[filePath] ?? "";
@@ -1278,7 +1271,6 @@ function EditorContent() {
             setShowChat={setShowChat}
             userName={user?.firstName ?? undefined}
             onViewDiff={handleViewDiff}
-            onApplyCode={applyCodeBlock}
           />
         )}
 

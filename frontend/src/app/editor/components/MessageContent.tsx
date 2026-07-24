@@ -79,10 +79,9 @@ const renderMarkdownText = (text: string) => {
 interface CodeBlockProps {
   lang: string;
   code: string;
-  onApplyCode?: (code: string) => void;
 }
 
-function CodeBlock({ lang, code, onApplyCode }: CodeBlockProps) {
+function CodeBlock({ lang, code }: CodeBlockProps) {
   const [copied, setCopied] = React.useState(false);
 
   const handleCopy = () => {
@@ -95,16 +94,9 @@ function CodeBlock({ lang, code, onApplyCode }: CodeBlockProps) {
     <div className="code-block-container">
       <div className="code-block-header">
         <span className="code-block-lang">{lang || "code"}</span>
-        <div style={{ display: "flex", gap: "0.35rem" }}>
-          {onApplyCode && (
-            <button className="code-block-copy-btn" onClick={() => onApplyCode(code.trim())} title="Apply to the active file">
-              Apply
-            </button>
-          )}
-          <button className="code-block-copy-btn" onClick={handleCopy}>
-            {copied ? "✓ Copied" : "Copy"}
-          </button>
-        </div>
+        <button className="code-block-copy-btn" onClick={handleCopy}>
+          {copied ? "✓ Copied" : "Copy"}
+        </button>
       </div>
       <pre className="code-block-pre">
         <code>{code.trim()}</code>
@@ -116,10 +108,9 @@ function CodeBlock({ lang, code, onApplyCode }: CodeBlockProps) {
 /* ── Main MessageContent component ── */
 interface MessageContentProps {
   content: string;
-  onApplyCode?: (code: string) => void;
 }
 
-export function MessageContent({ content, onApplyCode }: MessageContentProps) {
+export function MessageContent({ content }: MessageContentProps) {
   if (!content) return null;
 
   const parts = content.split(/(```[\s\S]*?```)/g);
@@ -132,7 +123,7 @@ export function MessageContent({ content, onApplyCode }: MessageContentProps) {
           const lang = match ? match[1] : "";
           const code = match ? match[2] : part.slice(3, -3);
           return (
-            <CodeBlock key={index} lang={lang} code={code} onApplyCode={onApplyCode} />
+            <CodeBlock key={index} lang={lang} code={code} />
           );
         }
         return (

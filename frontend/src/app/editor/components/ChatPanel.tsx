@@ -41,7 +41,6 @@ interface ChatPanelProps {
   setShowChat: (v: boolean) => void;
   userName?: string;
   onViewDiff: (filePath: string) => void;
-  onApplyCode: (code: string) => void;
 }
 
 export function ChatPanel({
@@ -68,7 +67,6 @@ export function ChatPanel({
   setShowChat,
   userName,
   onViewDiff,
-  onApplyCode,
 }: ChatPanelProps) {
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -208,12 +206,8 @@ export function ChatPanel({
                         <div className="typing-dot" />
                       </div>
                     ) : (
-                      msg.content && (
-                        <MessageContent
-                          content={msg.content}
-                          onApplyCode={msg.role === "assistant" ? onApplyCode : undefined}
-                        />
-                      )
+                      msg.content && <MessageContent content={msg.content} />
+
                     )}
 
                     {/* Streaming cursor */}
