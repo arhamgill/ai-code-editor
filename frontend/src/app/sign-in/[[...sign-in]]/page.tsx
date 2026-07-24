@@ -8,14 +8,9 @@ export default function SignInPage() {
       alignItems: "center",
       minHeight: "100vh",
       backgroundColor: "var(--bg-primary)",
-      backgroundImage: "radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.15) 0%, transparent 60%)"
+      backgroundImage: "radial-gradient(ellipse 60% 50% at 50% 0%, rgba(255,255,255,0.05) 0%, transparent 60%)",
     }}>
-      <SignIn appearance={{
-        variables: {
-          colorPrimary: "#6366f1",
-          colorBackground: "#11131e",
-        }
-      }} />
+      <SignIn />
     </div>
   );
 }

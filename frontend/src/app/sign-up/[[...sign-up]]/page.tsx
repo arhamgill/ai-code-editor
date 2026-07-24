@@ -8,14 +8,9 @@ export default function SignUpPage() {
       alignItems: "center",
       minHeight: "100vh",
       backgroundColor: "var(--bg-primary)",
-      backgroundImage: "radial-gradient(circle at 50% 50%, rgba(168, 85, 247, 0.12) 0%, transparent 60%)"
+      backgroundImage: "radial-gradient(ellipse 60% 50% at 50% 0%, rgba(255,255,255,0.05) 0%, transparent 60%)",
     }}>
-      <SignUp appearance={{
-        variables: {
-          colorPrimary: "#6366f1",
-          colorBackground: "#11131e",
-        }
-      }} />
+      <SignUp />
     </div>
   );
 }
