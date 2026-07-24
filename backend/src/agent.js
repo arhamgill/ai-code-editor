@@ -157,10 +157,55 @@ function getLineDiff(oldContent, newContent) {
   return { added, removed };
 }
 
+// Parse JSON that may contain raw control characters (unescaped newlines/tabs) inside
+// string values — a common reason Groq rejects the tool call in the first place.
+function safeJsonParse(s) {
+  const escapeCtrl = (str) => {
+    let out = "";
+    for (const ch of str) {
+      if (ch.charCodeAt(0) < 0x20) out += JSON.stringify(ch).slice(1, -1);
+      else out += ch;
+    }
+    return out;
+  };
+  for (const attempt of [s, escapeCtrl(s)]) {
+    try {
+      return JSON.parse(attempt);
+    } catch (_) {}
+  }
+  return null;
+}
+
+// Scans from an opening '{' and returns the balanced JSON object substring,
+// respecting string literals (so braces inside JSON string values are ignored).
+// This is needed because tool-call arguments contain code with nested { } braces.
+function extractBalancedJson(str, startIdx) {
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let i = startIdx; i < str.length; i++) {
+    const ch = str[i];
+    if (esc) { esc = false; continue; }
+    if (ch === "\\") { esc = true; continue; }
+    if (inStr) {
+      if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return str.slice(startIdx, i + 1);
+    }
+  }
+  return null;
+}
+
 // Some Groq/Llama models emit tool calls in a text format like
-// `<function=read_file,{"path":"app/page.tsx"}>` that Groq's server rejects with a
-// `tool_use_failed` 400 (it mis-parses the name + args). This extracts the intended
-// tool call(s) from the error's `failed_generation` so we can run them ourselves.
+// `<function=write_file,{"path":"...","content":"..."}></function>` that Groq's server
+// rejects with a `tool_use_failed` 400. Formats vary (with/without a trailing `>`, and
+// the args contain nested braces), so we locate each `<function=NAME` and then extract a
+// balanced JSON object for the args, letting us run the intended call ourselves.
 function parseGroqFailedGeneration(err) {
   let haystack = "";
   try {
@@ -178,22 +223,23 @@ function parseGroqFailedGeneration(err) {
   }
 
   const calls = [];
-  const re = /<function=([a-zA-Z0-9_]+)\s*,?\s*(\{[\s\S]*?\})\s*>/g;
+  const nameRe = /<function=([a-zA-Z0-9_]+)/g;
   let m;
-  while ((m = re.exec(haystack)) !== null) {
+  while ((m = nameRe.exec(haystack)) !== null) {
     const name = m[1];
-    let args = {};
-    const rawArgs = m[2];
-    try {
-      args = JSON.parse(rawArgs);
-    } catch (_) {
-      try {
-        args = JSON.parse(rawArgs.replace(/\\"/g, '"'));
-      } catch (_) {
-        args = {};
-      }
+    const braceIdx = haystack.indexOf("{", nameRe.lastIndex);
+    if (braceIdx === -1) continue;
+    const jsonStr = extractBalancedJson(haystack, braceIdx);
+    if (!jsonStr) continue;
+
+    // Continue scanning after this call's JSON to avoid matching inside it.
+    nameRe.lastIndex = braceIdx + jsonStr.length;
+
+    const args = safeJsonParse(jsonStr);
+    // Skip calls we can't parse rather than executing a tool with empty args.
+    if (args && typeof args === "object") {
+      calls.push({ name, args });
     }
-    calls.push({ name, args });
   }
   return calls;
 }
