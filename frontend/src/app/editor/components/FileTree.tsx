@@ -277,8 +277,10 @@ export function FileTree({
 
         <div className="sidebar-content">
           {loadingTree ? (
-            <div style={{ padding: "1rem", color: "var(--text-muted)", fontSize: "0.8rem", fontStyle: "italic" }}>
-              Scanning directory structure...
+            <div style={{ padding: "0.5rem 0.75rem", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+              {[92, 70, 80, 60, 74, 50].map((w, i) => (
+                <div key={i} className="skeleton-line" style={{ width: `${w}%`, marginLeft: i % 3 === 2 ? "1rem" : 0 }} />
+              ))}
             </div>
           ) : displayTree.length === 0 ? (
             <div style={{ padding: "1.5rem", color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: 1.4, textAlign: "center" }}>

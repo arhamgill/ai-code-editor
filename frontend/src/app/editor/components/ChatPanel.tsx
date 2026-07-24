@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef } from "react";
+import React, { useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChatMessage } from "../types";
 import { MessageContent } from "./MessageContent";
@@ -32,6 +32,7 @@ interface ChatPanelProps {
   chatInput: string;
   setChatInput: (v: string) => void;
   handleSendChat: (e: React.FormEvent) => Promise<void>;
+  stopStreaming: () => void;
   streamingActive: boolean;
   attachedFile: string | null;
   setAttachedFile: (v: string | null) => void;
@@ -58,6 +59,7 @@ export function ChatPanel({
   chatInput,
   setChatInput,
   handleSendChat,
+  stopStreaming,
   streamingActive,
   attachedFile,
   setAttachedFile,
@@ -78,11 +80,20 @@ export function ChatPanel({
   onApplyCode,
 }: ChatPanelProps) {
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto scroll to bottom on new messages
   React.useEffect(() => {
     chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Auto-grow the textarea up to a max height
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [chatInput]);
 
   const handleReaction = (msgIndex: number, reaction: "up" | "down") => {
     setMessages((prev) => {
@@ -151,15 +162,15 @@ export function ChatPanel({
           {messages.length === 0 ? (
             <div className="chat-empty-state">
               <div style={{ fontSize: "2rem" }}>✨</div>
-              <h4 style={{ color: "#fff", fontWeight: 700, fontSize: "0.95rem" }}>AuraEdit AI Helper</h4>
+              <h4 style={{ color: "#fff", fontWeight: 700, fontSize: "0.95rem" }}>Forge Helper</h4>
               <p style={{ fontSize: "0.8rem", lineHeight: 1.45, color: "var(--text-muted)", textAlign: "center" }}>
                 Ask questions, request file changes, or ask for code explanations in this workspace project.
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", width: "100%", marginTop: "1rem" }}>
                 {[
-                  { icon: "📁", label: "Explain project structure", prompt: "Explain the structure of this project." },
-                  { icon: "🔍", label: "Find all TODOs", prompt: "Search this codebase for all FIXME and TODO annotations." },
-                  { icon: "🎨", label: "Review globals.css", prompt: "Are there any styling optimizations we can make in globals.css?" },
+                  { icon: "➕", label: "Add an /about page", prompt: "Add an /about route with a link to it from the homepage." },
+                  { icon: "🎨", label: "Build a pricing section", prompt: "Add a responsive pricing section to the homepage using Tailwind." },
+                  { icon: "🧩", label: "Add a client component", prompt: "Create an interactive counter as a client component and use it on the homepage." },
                 ].map((chip) => (
                   <button
                     key={chip.prompt}
@@ -365,6 +376,8 @@ export function ChatPanel({
 
           <form onSubmit={handleSendChat} className="chat-input-form">
             <textarea
+              ref={textareaRef}
+              rows={1}
               className="chat-textarea"
               placeholder="Ask a question or request code changes..."
               value={chatInput}
@@ -372,21 +385,34 @@ export function ChatPanel({
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  handleSendChat(e);
+                  if (!streamingActive && chatInput.trim()) handleSendChat(e);
                 }
               }}
-              disabled={streamingActive}
             />
-            <button
-              type="submit"
-              className="chat-send-btn"
-              disabled={!chatInput.trim() || streamingActive}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-            </button>
+            {streamingActive ? (
+              <button
+                type="button"
+                className="chat-send-btn chat-stop-btn"
+                onClick={stopStreaming}
+                title="Stop generating"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="5" y="5" width="14" height="14" rx="2.5" />
+                </svg>
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="chat-send-btn"
+                disabled={!chatInput.trim()}
+                title="Send (Enter)"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
+            )}
           </form>
         </div>
       </aside>

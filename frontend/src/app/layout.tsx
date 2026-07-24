@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AuraEdit AI",
-  description: "Sleek Next.js Frontend with Express Backend & Clerk Auth",
+  title: "Forge — Craft Next.js apps with AI",
+  description: "An AI editor built for Next.js. Describe what you want and Forge writes the routes, components, and styles — running live in your browser.",
 };
 
 export default function RootLayout({

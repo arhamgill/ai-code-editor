@@ -12,10 +12,10 @@ interface WelcomeScreenProps {
 }
 
 const QUICK_PROMPTS = [
-  { icon: "📁", label: "Explain project structure", prompt: "Explain the structure and purpose of this project." },
-  { icon: "🔍", label: "Find all TODOs", prompt: "Search this codebase for all FIXME and TODO annotations." },
-  { icon: "🎨", label: "Review globals.css", prompt: "Are there any styling or code optimizations we can make?" },
-  { icon: "⚡", label: "Suggest improvements", prompt: "Review this codebase and suggest 3 specific improvements." },
+  { icon: "➕", label: "Add a new route", prompt: "Add an /about route with a link to it from the homepage." },
+  { icon: "🎨", label: "Build a landing section", prompt: "Add a responsive hero and pricing section to the homepage using Tailwind." },
+  { icon: "🧩", label: "Add a client component", prompt: "Create an interactive counter as a client component and use it on the homepage." },
+  { icon: "⚡", label: "Suggest improvements", prompt: "Review this Next.js app and suggest 3 specific improvements." },
 ];
 
 export function WelcomeScreen({ activeProject, setChatInput, setShowChat, recentFiles, openFile }: WelcomeScreenProps) {

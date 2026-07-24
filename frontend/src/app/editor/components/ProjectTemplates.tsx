@@ -15,194 +15,313 @@ interface Template {
   files: TemplateFile[];
 }
 
+// ─────────────────────────────────────────────────────────────
+// Shared Next.js 15 + TypeScript + Tailwind v3 scaffolding.
+// Versions are pinned for WebContainer compatibility: Next 16 crashes
+// in the in-browser runtime, and Tailwind v4's native oxide binary is
+// unreliable there — so we ship Next 15.x + Tailwind v3.
+// The `dev` script is plain `next dev` (no Turbopack) to match the preview.
+// ─────────────────────────────────────────────────────────────
+const nextPackageJson = (name: string) =>
+  JSON.stringify(
+    {
+      name,
+      version: "0.1.0",
+      private: true,
+      scripts: {
+        dev: "next dev",
+        build: "next build",
+        start: "next start",
+      },
+      dependencies: {
+        next: "15.1.0",
+        react: "18.3.1",
+        "react-dom": "18.3.1",
+      },
+      devDependencies: {
+        typescript: "^5",
+        "@types/node": "^20",
+        "@types/react": "^18",
+        "@types/react-dom": "^18",
+        tailwindcss: "^3.4.1",
+        postcss: "^8",
+        autoprefixer: "^10.4.20",
+      },
+    },
+    null,
+    2
+  );
+
+const NEXT_CONFIG_FILES: TemplateFile[] = [
+  {
+    path: "tsconfig.json",
+    content: JSON.stringify(
+      {
+        compilerOptions: {
+          target: "ES2017",
+          lib: ["dom", "dom.iterable", "esnext"],
+          allowJs: true,
+          skipLibCheck: true,
+          strict: true,
+          noEmit: true,
+          esModuleInterop: true,
+          module: "esnext",
+          moduleResolution: "bundler",
+          resolveJsonModule: true,
+          isolatedModules: true,
+          jsx: "preserve",
+          incremental: true,
+          plugins: [{ name: "next" }],
+          paths: { "@/*": ["./*"] },
+        },
+        include: ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+        exclude: ["node_modules"],
+      },
+      null,
+      2
+    ),
+  },
+  {
+    path: "next.config.mjs",
+    content: `/** @type {import('next').NextConfig} */
+const nextConfig = {};
+
+export default nextConfig;
+`,
+  },
+  {
+    path: "tailwind.config.ts",
+    content: `import type { Config } from "tailwindcss";
+
+const config: Config = {
+  content: [
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+};
+
+export default config;
+`,
+  },
+  {
+    path: "postcss.config.mjs",
+    content: `/** @type {import('postcss-load-config').Config} */
+const config = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+
+export default config;
+`,
+  },
+  {
+    path: "app/globals.css",
+    content: `@tailwind base;
+@tailwind components;
+@tailwind utilities;
+`,
+  },
+  {
+    path: ".gitignore",
+    content: `node_modules
+.next
+out
+.env*.local
+`,
+  },
+];
+
 const TEMPLATES: Template[] = [
   {
-    id: "blank",
-    name: "Blank Project",
-    description: "Just a README to get started",
-    icon: "📄",
+    id: "nextjs-starter",
+    name: "Next.js Starter",
+    description: "App Router + TypeScript + Tailwind. Minimal single page.",
+    icon: "▲",
     files: [
+      ...NEXT_CONFIG_FILES,
+      { path: "package.json", content: nextPackageJson("nextjs-starter") },
       {
-        path: "README.md",
-        content: "# My Project\n\nA new project created with **AuraEdit AI**.\n\n## Getting Started\n\nAsk the AI to help you build something amazing!\n",
-      },
-    ],
-  },
-  {
-    id: "html-css-js",
-    name: "HTML/CSS/JS",
-    description: "Static web page with styles and scripts",
-    icon: "🌐",
-    files: [
-      {
-        path: "index.html",
-        content: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>My App</title>
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <div class="container">
-    <h1>Hello World</h1>
-    <p>Built with AuraEdit AI ✨</p>
-    <button id="btn">Click me</button>
-  </div>
-  <script src="script.js"></script>
-</body>
-</html>`,
-      },
-      {
-        path: "styles.css",
-        content: `* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  font-family: system-ui, -apple-system, sans-serif;
-  background: #0a0a0a;
-  color: #e8e8e8;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.container {
-  text-align: center;
-  padding: 2rem;
-}
-h1 {
-  font-size: 2.5rem;
-  margin-bottom: 1rem;
-  background: linear-gradient(135deg, #22d3ee, #818cf8);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-p { color: #888; margin-bottom: 2rem; }
-button {
-  background: #22d3ee;
-  color: #0a0a0a;
-  border: none;
-  padding: 0.75rem 2rem;
-  border-radius: 8px;
-  font-weight: 700;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: all 0.2s;
-}
-button:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(34,211,238,0.25); }`,
-      },
-      {
-        path: "script.js",
-        content: `document.getElementById('btn').addEventListener('click', () => {
-  alert('Hello from AuraEdit AI! 🚀');
-});`,
-      },
-    ],
-  },
-  {
-    id: "react-vite",
-    name: "React + Vite",
-    description: "React app scaffold (no npm install needed for AI editing)",
-    icon: "⚛️",
-    files: [
-      {
-        path: "index.html",
-        content: `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>React App</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
-</html>`,
-      },
-      {
-        path: "package.json",
-        content: JSON.stringify({
-          name: "react-app",
-          version: "0.1.0",
-          private: true,
-          scripts: { dev: "vite", build: "vite build", preview: "vite preview" },
-          dependencies: { react: "^18.2.0", "react-dom": "^18.2.0" },
-          devDependencies: { "@vitejs/plugin-react": "^4.0.0", vite: "^5.0.0" },
-        }, null, 2),
-      },
-      {
-        path: "vite.config.js",
-        content: `import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-export default defineConfig({ plugins: [react()] })`,
-      },
-      {
-        path: "src/main.jsx",
-        content: `import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App'
-import './index.css'
-ReactDOM.createRoot(document.getElementById('root')).render(<App />)`,
-      },
-      {
-        path: "src/App.jsx",
-        content: `import React, { useState } from 'react'
+        path: "app/layout.tsx",
+        content: `import type { Metadata } from "next";
+import "./globals.css";
 
-function App() {
-  const [count, setCount] = useState(0)
+export const metadata: Metadata = {
+  title: "Next.js Starter",
+  description: "Built with Forge",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'system-ui' }}>
-      <h1>React App ⚛️</h1>
-      <p>Built with AuraEdit AI</p>
-      <button onClick={() => setCount(c => c + 1)}>Count: {count}</button>
-    </div>
-  )
+    <html lang="en">
+      <body className="bg-black text-white antialiased">{children}</body>
+    </html>
+  );
 }
-export default App`,
-      },
-      { path: "src/index.css", content: "* { margin: 0; padding: 0; box-sizing: border-box; }\nbody { background: #0a0a0a; color: #e8e8e8; }" },
-    ],
-  },
-  {
-    id: "express-api",
-    name: "Express REST API",
-    description: "Node.js REST API with Express",
-    icon: "🔌",
-    files: [
-      {
-        path: "package.json",
-        content: JSON.stringify({
-          name: "express-api",
-          version: "1.0.0",
-          scripts: { dev: "node --watch src/index.js", start: "node src/index.js" },
-          dependencies: { express: "^4.18.2", cors: "^2.8.5" },
-        }, null, 2),
-      },
-      {
-        path: "src/index.js",
-        content: `import express from 'express'
-import cors from 'cors'
-
-const app = express()
-const PORT = process.env.PORT || 3000
-
-app.use(cors())
-app.use(express.json())
-
-// Routes
-app.get('/', (req, res) => {
-  res.json({ message: 'Hello from Express API!', status: 'ok' })
-})
-
-app.get('/api/items', (req, res) => {
-  res.json({ items: [{ id: 1, name: 'Item One' }, { id: 2, name: 'Item Two' }] })
-})
-
-app.listen(PORT, () => console.log(\`Server running on http://localhost:\${PORT}\`))
 `,
       },
-      { path: "README.md", content: "# Express REST API\n\nRun with `npm run dev`.\n\n## Endpoints\n- `GET /` — Health check\n- `GET /api/items` — List items\n" },
+      {
+        path: "app/page.tsx",
+        content: `export default function Home() {
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-8 text-center">
+      <span className="rounded-full border border-white/15 px-3 py-1 text-xs uppercase tracking-widest text-white/60">
+        Next.js 15 · App Router
+      </span>
+      <h1 className="text-5xl font-bold tracking-tight">
+        Hello from Forge
+      </h1>
+      <p className="max-w-md text-white/60">
+        Edit <code className="rounded bg-white/10 px-1.5 py-0.5">app/page.tsx</code> and ask
+        the AI to build something. Your changes hot-reload in the preview.
+      </p>
+    </main>
+  );
+}
+`,
+      },
+    ],
+  },
+  {
+    id: "nextjs-landing",
+    name: "Next.js Landing",
+    description: "Multi-route example: layout, nav, /about, client component.",
+    icon: "◆",
+    files: [
+      ...NEXT_CONFIG_FILES,
+      { path: "package.json", content: nextPackageJson("nextjs-landing") },
+      {
+        path: "app/layout.tsx",
+        content: `import type { Metadata } from "next";
+import { Nav } from "@/components/Nav";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "Forge Landing",
+  description: "A multi-page Next.js starter built with Forge",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body className="min-h-screen bg-black text-white antialiased">
+        <Nav />
+        {children}
+      </body>
+    </html>
+  );
+}
+`,
+      },
+      {
+        path: "app/page.tsx",
+        content: `import { Counter } from "@/components/Counter";
+
+const features = [
+  { title: "App Router", body: "File-based routing with layouts, server and client components." },
+  { title: "TypeScript", body: "Strict types across the whole project, out of the box." },
+  { title: "Tailwind CSS", body: "Utility-first styling with a clean, minimal design." },
+];
+
+export default function Home() {
+  return (
+    <main className="mx-auto max-w-3xl px-6 py-20">
+      <section className="flex flex-col items-center gap-6 text-center">
+        <h1 className="text-5xl font-bold tracking-tight">Build something great</h1>
+        <p className="max-w-md text-white/60">
+          A multi-page Next.js starter. Ask the AI to add routes, components, and
+          features — it all hot-reloads in the preview.
+        </p>
+        <Counter />
+      </section>
+
+      <section className="mt-20 grid gap-4 sm:grid-cols-3">
+        {features.map((f) => (
+          <div key={f.title} className="rounded-lg border border-white/10 p-5">
+            <h3 className="font-semibold">{f.title}</h3>
+            <p className="mt-2 text-sm text-white/50">{f.body}</p>
+          </div>
+        ))}
+      </section>
+    </main>
+  );
+}
+`,
+      },
+      {
+        path: "app/about/page.tsx",
+        content: `export const metadata = { title: "About · Forge" };
+
+export default function About() {
+  return (
+    <main className="mx-auto max-w-3xl px-6 py-20">
+      <h1 className="text-4xl font-bold tracking-tight">About</h1>
+      <p className="mt-4 text-white/60">
+        This page lives at{" "}
+        <code className="rounded bg-white/10 px-1.5 py-0.5">app/about/page.tsx</code>. Add
+        more routes by creating folders under{" "}
+        <code className="rounded bg-white/10 px-1.5 py-0.5">app/</code>.
+      </p>
+    </main>
+  );
+}
+`,
+      },
+      {
+        path: "components/Nav.tsx",
+        content: `import Link from "next/link";
+
+export function Nav() {
+  return (
+    <nav className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+      <Link href="/" className="font-semibold tracking-tight">
+        Forge<span className="text-white/40"> app</span>
+      </Link>
+      <div className="flex gap-6 text-sm text-white/60">
+        <Link href="/" className="transition hover:text-white">
+          Home
+        </Link>
+        <Link href="/about" className="transition hover:text-white">
+          About
+        </Link>
+      </div>
+    </nav>
+  );
+}
+`,
+      },
+      {
+        path: "components/Counter.tsx",
+        content: `"use client";
+
+import { useState } from "react";
+
+export function Counter() {
+  const [count, setCount] = useState(0);
+  return (
+    <button
+      onClick={() => setCount((c) => c + 1)}
+      className="rounded-md border border-white/15 px-5 py-2.5 font-medium transition hover:border-white/40"
+    >
+      Clicked {count} {count === 1 ? "time" : "times"}
+    </button>
+  );
+}
+`,
+      },
     ],
   },
 ];
@@ -219,7 +338,7 @@ export function ProjectTemplates({ onCreate, loading }: ProjectTemplatesProps) {
 
   const handleSelectTemplate = (t: Template) => {
     setSelectedTemplate(t);
-    setProjectName(`my-${t.id}-project`);
+    setProjectName("my-app");
     setShowModal(true);
   };
 
@@ -234,7 +353,7 @@ export function ProjectTemplates({ onCreate, loading }: ProjectTemplatesProps) {
   return (
     <>
       <div className="templates-section">
-        <h3 className="templates-heading">Start from a template</h3>
+        <h3 className="templates-heading">Start a new Next.js app</h3>
         <div className="templates-grid">
           {TEMPLATES.map((t) => (
             <button

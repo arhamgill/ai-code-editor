@@ -79,9 +79,10 @@ const renderMarkdownText = (text: string) => {
 interface CodeBlockProps {
   lang: string;
   code: string;
+  onApplyCode?: (code: string) => void;
 }
 
-function CodeBlock({ lang, code }: CodeBlockProps) {
+function CodeBlock({ lang, code, onApplyCode }: CodeBlockProps) {
   const [copied, setCopied] = React.useState(false);
 
   const handleCopy = () => {
@@ -94,9 +95,16 @@ function CodeBlock({ lang, code }: CodeBlockProps) {
     <div className="code-block-container">
       <div className="code-block-header">
         <span className="code-block-lang">{lang || "code"}</span>
-        <button className="code-block-copy-btn" onClick={handleCopy}>
-          {copied ? "✓ Copied" : "Copy"}
-        </button>
+        <div style={{ display: "flex", gap: "0.35rem" }}>
+          {onApplyCode && (
+            <button className="code-block-copy-btn" onClick={() => onApplyCode(code.trim())} title="Apply to the active file">
+              Apply
+            </button>
+          )}
+          <button className="code-block-copy-btn" onClick={handleCopy}>
+            {copied ? "✓ Copied" : "Copy"}
+          </button>
+        </div>
       </div>
       <pre className="code-block-pre">
         <code>{code.trim()}</code>
@@ -124,7 +132,7 @@ export function MessageContent({ content, onApplyCode }: MessageContentProps) {
           const lang = match ? match[1] : "";
           const code = match ? match[2] : part.slice(3, -3);
           return (
-            <CodeBlock key={index} lang={lang} code={code} />
+            <CodeBlock key={index} lang={lang} code={code} onApplyCode={onApplyCode} />
           );
         }
         return (

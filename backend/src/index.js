@@ -5,7 +5,6 @@ import morgan from "morgan";
 import { clerkMiddleware, clerkClient, getAuth } from "@clerk/express";
 import prisma from "./db.js";
 import projectRouter from "./projects.js";
-import chatRouter from "./chat.js";
 import agentRouter from "./agent.js";
 
 // Load environment variables
@@ -26,19 +25,13 @@ app.use(clerkMiddleware());
 // Mount projects API router
 app.use("/api/projects", projectRouter);
 
-// Mount chat API router
-app.use("/api/chat", chatRouter);
-
 // Mount AI agent router
 app.use("/api/agent", agentRouter);
 
 // Helper to ensure Clerk user is synced with local Postgres DB
 async function getOrSyncUser(userId) {
   // Check if user exists in database
-  let dbUser = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { _count: { select: { snippets: true } } }
-  });
+  let dbUser = await prisma.user.findUnique({ where: { id: userId } });
 
   if (!dbUser) {
     try {
@@ -53,8 +46,7 @@ async function getOrSyncUser(userId) {
         create: {
           id: userId,
           email: email
-        },
-        include: { _count: { select: { snippets: true } } }
+        }
       });
       console.log(`[Database] Synced user: ${email} (ID: ${userId})`);
     } catch (err) {
@@ -77,85 +69,20 @@ app.get("/api/health", (req, res) => {
 });
 
 app.get("/api/hello", (req, res) => {
-  res.json({ message: "Hello from the AuraEdit Express backend!" });
+  res.json({ message: "Hello from the Forge Express backend!" });
 });
 
-// Protected route that checks for authentication and syncs user with DB
-app.get("/api/protected", async (req, res) => {
+// GET /api/me - Authenticated route that syncs the Clerk user into Postgres
+app.get("/api/me", async (req, res) => {
   const auth = getAuth(req);
 
   if (!auth.userId) {
-    return res.status(401).json({
-      error: "Unauthorized",
-      message: "You must be logged in to access this protected API route."
-    });
+    return res.status(401).json({ error: "Unauthorized", message: "You must be signed in." });
   }
 
   try {
     const dbUser = await getOrSyncUser(auth.userId);
-
-    res.json({
-      message: "Welcome to the secure AuraEdit API!",
-      userId: dbUser.id,
-      email: dbUser.email,
-      snippetCount: dbUser._count.snippets,
-      timestamp: new Date().toISOString()
-    });
-  } catch (err) {
-    res.status(500).json({ error: "Internal Server Error", message: err.message });
-  }
-});
-
-// GET /api/snippets - Fetch all snippets for the logged-in user
-app.get("/api/snippets", async (req, res) => {
-  const auth = getAuth(req);
-
-  if (!auth.userId) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
-  try {
-    // Ensure user is synced
-    await getOrSyncUser(auth.userId);
-
-    const snippets = await prisma.snippet.findMany({
-      where: { userId: auth.userId },
-      orderBy: { createdAt: "desc" }
-    });
-
-    res.json(snippets);
-  } catch (err) {
-    res.status(500).json({ error: "Internal Server Error", message: err.message });
-  }
-});
-
-// POST /api/snippets - Save a new snippet to Postgres
-app.post("/api/snippets", async (req, res) => {
-  const auth = getAuth(req);
-
-  if (!auth.userId) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
-  const { title, code } = req.body;
-
-  if (!title || !code) {
-    return res.status(400).json({ error: "Bad Request", message: "Title and code are required." });
-  }
-
-  try {
-    // Ensure user is synced
-    await getOrSyncUser(auth.userId);
-
-    const snippet = await prisma.snippet.create({
-      data: {
-        title,
-        code,
-        userId: auth.userId
-      }
-    });
-
-    res.json(snippet);
+    res.json({ userId: dbUser.id, email: dbUser.email });
   } catch (err) {
     res.status(500).json({ error: "Internal Server Error", message: err.message });
   }

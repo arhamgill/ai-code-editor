@@ -11,6 +11,7 @@ import { Project, FileNode, ChatMessage, ToastItem, DiffModalState, CommandActio
 import { detectLanguage } from "./utils/languageDetector";
 import { getFileIcon } from "./utils/fileIcons";
 import { formatFriendlyErrorMessage } from "./utils/formatters";
+import { previewSession } from "./utils/webcontainerSession";
 
 import { FileTree } from "./components/FileTree";
 import { ChatPanel } from "./components/ChatPanel";
@@ -84,6 +85,7 @@ function EditorContent() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const [wordWrap, setWordWrap] = useState<"on" | "off">("off");
+  const [minimapOn, setMinimapOn] = useState(true);
   const [fontSize, setFontSize] = useState(14);
   const [editorMode, setEditorMode] = useState<"code" | "preview">("code");
   const [recentFiles, setRecentFiles] = useState<string[]>([]);
@@ -114,6 +116,7 @@ function EditorContent() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const addToast = useCallback((message: string, type: ToastItem["type"]) => {
     setToasts((prev) => [...prev, { id: Date.now(), message, type }]);
@@ -167,7 +170,7 @@ function EditorContent() {
       // Update recent files
       setRecentFiles((prev) => {
         const updated = [filePath, ...prev.filter((f) => f !== filePath)].slice(0, 10);
-        localStorage.setItem(`auraedit_recent_${activeProject.id}`, JSON.stringify(updated));
+        localStorage.setItem(`forge_recent_${activeProject.id}`, JSON.stringify(updated));
         return updated;
       });
       return;
@@ -200,7 +203,7 @@ function EditorContent() {
         // Update recent files
         setRecentFiles((prev) => {
           const updated = [filePath, ...prev.filter((f) => f !== filePath)].slice(0, 10);
-          localStorage.setItem(`auraedit_recent_${activeProject.id}`, JSON.stringify(updated));
+          localStorage.setItem(`forge_recent_${activeProject.id}`, JSON.stringify(updated));
           return updated;
         });
       }
@@ -255,6 +258,8 @@ function EditorContent() {
         setTabOriginalContents((prev) => ({ ...prev, [activeFilePath]: tempContent }));
         setTabContents((prev) => ({ ...prev, [activeFilePath]: tempContent }));
         setUnsavedChanges((prev) => ({ ...prev, [activeFilePath]: false }));
+        // Mirror into the running preview so Next.js hot-reloads the change.
+        previewSession.syncFile(activeProject.id, activeFilePath, tempContent);
         addToast(`Saved ${activeFilePath.split("/").pop()}!`, "success");
       }
     } catch (err: unknown) {
@@ -381,12 +386,13 @@ function EditorContent() {
 
     // Load recent files
     try {
-      const saved = localStorage.getItem(`auraedit_recent_${project.id}`);
+      const saved = localStorage.getItem(`forge_recent_${project.id}`);
       if (saved) setRecentFiles(JSON.parse(saved));
     } catch (_) {}
   }, [fetchFileTree, router]);
 
   const closeWorkspace = useCallback(() => {
+    previewSession.teardown();
     setActiveProject(null);
     setFileTree([]);
     setActiveFilePath(null);
@@ -442,16 +448,21 @@ function EditorContent() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ name: projectName.trim(), files: payloadFiles }),
       });
-      if (res.ok) await fetchProjects();
-      else { const d = await res.json(); alert(d.message || "Upload failed."); }
+      if (res.ok) {
+        await fetchProjects();
+        addToast(`Imported "${projectName.trim()}"!`, "success");
+      } else {
+        const d = await res.json().catch(() => ({}));
+        addToast(d.message || "Import failed.", "error");
+      }
     } catch (err) {
       console.error("Upload error:", err);
-      alert("Error uploading folder.");
+      addToast("Error importing folder.", "error");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [getToken, API, fetchProjects]);
+  }, [getToken, API, fetchProjects, addToast]);
 
   const handleCreateTemplate = useCallback(async (name: string, files: Array<{ path: string; content: string }>) => {
     setCreatingTemplate(true);
@@ -494,7 +505,7 @@ function EditorContent() {
   }, [activeFilePath]);
 
   const handleClearChat = useCallback(() => {
-    if (activeProject) localStorage.removeItem(`auraedit_chat_${activeProject.id}`);
+    if (activeProject) localStorage.removeItem(`forge_chat_${activeProject.id}`);
     setMessages([]);
   }, [activeProject]);
 
@@ -542,10 +553,14 @@ function EditorContent() {
       { role: "assistant", content: "", status: "streaming", events: [] },
     ]);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const token = await getToken();
       const response = await fetch(`${API}/api/agent/stream`, {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ projectId: activeProject.id, prompt: userPrompt, history: chatHistory, model: selectedModel }),
       });
@@ -609,28 +624,30 @@ function EditorContent() {
                 return updated;
               });
 
-              // Auto-refresh
+              // Auto-refresh + mirror into the running preview for live HMR
               const updatedPath = event.path;
               (async () => {
                 await fetchFileTree(activeProject.id);
-                if (openTabs.includes(updatedPath)) {
-                  if (event.action === "Deleted") {
-                    closeTab(updatedPath);
-                  } else {
-                    const t = await getToken();
-                    const r = await fetch(`${API}/api/projects/${activeProject.id}/read`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
-                      body: JSON.stringify({ path: updatedPath }),
-                    });
-                    if (r.ok) {
-                      const d = await r.json();
-                      const newContent = d.content;
-                      setTabOriginalContents((prev) => ({ ...prev, [updatedPath]: newContent }));
-                      setTabContents((prev) => ({ ...prev, [updatedPath]: newContent }));
-                      setUnsavedChanges((prev) => ({ ...prev, [updatedPath]: false }));
-                      if (activeFilePath === updatedPath) { setActiveFileContent(newContent); setTempContent(newContent); }
-                    }
+                if (event.action === "Deleted") {
+                  previewSession.removeFile(activeProject.id, updatedPath);
+                  if (openTabs.includes(updatedPath)) closeTab(updatedPath);
+                  return;
+                }
+                const t = await getToken();
+                const r = await fetch(`${API}/api/projects/${activeProject.id}/read`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
+                  body: JSON.stringify({ path: updatedPath }),
+                });
+                if (r.ok) {
+                  const d = await r.json();
+                  const newContent = d.content;
+                  if (!d.isBinary) previewSession.syncFile(activeProject.id, updatedPath, newContent);
+                  if (openTabs.includes(updatedPath)) {
+                    setTabOriginalContents((prev) => ({ ...prev, [updatedPath]: newContent }));
+                    setTabContents((prev) => ({ ...prev, [updatedPath]: newContent }));
+                    setUnsavedChanges((prev) => ({ ...prev, [updatedPath]: false }));
+                    if (activeFilePath === updatedPath) { setActiveFileContent(newContent); setTempContent(newContent); }
                   }
                 }
               })();
@@ -675,22 +692,35 @@ function EditorContent() {
         return updated;
       });
     } catch (err: unknown) {
+      const aborted = err instanceof DOMException && err.name === "AbortError";
       setMessages((prev) => {
         const updated = [...prev];
         const last = updated.length - 1;
         if (last >= 0 && updated[last].role === "assistant") {
-          updated[last] = {
-            ...updated[last],
-            content: `Sorry, an error occurred:\n\n${formatFriendlyErrorMessage(err instanceof Error ? err.message : String(err))}`,
-            status: "complete",
-          };
+          updated[last] = aborted
+            ? {
+                ...updated[last],
+                content: updated[last].content + (updated[last].content ? "\n\n_(stopped)_" : "_(stopped)_"),
+                status: "complete",
+                events: (updated[last].events ?? []).filter((e) => e.type !== "tool_call"),
+              }
+            : {
+                ...updated[last],
+                content: `Sorry, an error occurred:\n\n${formatFriendlyErrorMessage(err instanceof Error ? err.message : String(err))}`,
+                status: "complete",
+              };
         }
         return updated;
       });
     } finally {
+      abortControllerRef.current = null;
       setStreamingActive(false);
     }
   }, [chatInput, streamingActive, activeProject, attachedFile, messages, tabContents, selectedModel, getToken, API, fetchFileTree, openTabs, closeTab, activeFilePath]);
+
+  const stopStreaming = useCallback(() => {
+    abortControllerRef.current?.abort();
+  }, []);
 
   // ─────────────────────────────────────────────────────────
   // Drag resize handlers
@@ -701,7 +731,7 @@ function EditorContent() {
     const startWidth = sidebarWidth;
     const onMove = (ev: MouseEvent) => {
       const w = startWidth + (ev.clientX - startX);
-      if (w >= 160 && w <= 500) { setSidebarWidth(w); localStorage.setItem("auraedit_sidebar_width", w.toString()); }
+      if (w >= 160 && w <= 500) { setSidebarWidth(w); localStorage.setItem("forge_sidebar_width", w.toString()); }
     };
     const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
     document.addEventListener("mousemove", onMove);
@@ -714,7 +744,7 @@ function EditorContent() {
     const startWidth = chatWidth;
     const onMove = (ev: MouseEvent) => {
       const w = startWidth - (ev.clientX - startX);
-      if (w >= 250 && w <= 650) { setChatWidth(w); localStorage.setItem("auraedit_chat_width", w.toString()); }
+      if (w >= 250 && w <= 650) { setChatWidth(w); localStorage.setItem("forge_chat_width", w.toString()); }
     };
     const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
     document.addEventListener("mousemove", onMove);
@@ -727,7 +757,7 @@ function EditorContent() {
     const startWidth = previewWidth;
     const onMove = (ev: MouseEvent) => {
       const w = startWidth - (ev.clientX - startX);
-      if (w >= 280 && w <= 700) { setPreviewWidth(w); localStorage.setItem("auraedit_preview_width", w.toString()); }
+      if (w >= 280 && w <= 700) { setPreviewWidth(w); localStorage.setItem("forge_preview_width", w.toString()); }
     };
     const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
     document.addEventListener("mousemove", onMove);
@@ -739,6 +769,7 @@ function EditorContent() {
   // ─────────────────────────────────────────────────────────
   const handleEditorWillMount = (monaco: unknown) => {
     const m = monaco as {
+      editor: { defineTheme: (name: string, theme: object) => void };
       languages: {
         typescript: {
           JsxEmit: { React: number };
@@ -757,6 +788,48 @@ function EditorContent() {
     m.languages.typescript.javascriptDefaults.setCompilerOptions(opts);
     m.languages.typescript.javascriptDefaults.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: false });
     m.languages.typescript.typescriptDefaults.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: false });
+
+    // Monochrome "Forge" editor theme — near-greyscale, tuned to the black/white UI.
+    m.editor.defineTheme("forge-dark", {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "", foreground: "ededed" },
+        { token: "comment", foreground: "5f5f5f", fontStyle: "italic" },
+        { token: "keyword", foreground: "ffffff", fontStyle: "bold" },
+        { token: "string", foreground: "a8a8a8" },
+        { token: "number", foreground: "cfcfcf" },
+        { token: "type", foreground: "ffffff" },
+        { token: "delimiter", foreground: "8f8f8f" },
+        { token: "tag", foreground: "ffffff" },
+        { token: "attribute.name", foreground: "b8b8b8" },
+        { token: "attribute.value", foreground: "9a9a9a" },
+      ],
+      colors: {
+        "editor.background": "#000000",
+        "editor.foreground": "#ededed",
+        "editorLineNumber.foreground": "#3a3a3a",
+        "editorLineNumber.activeForeground": "#a1a1a1",
+        "editorCursor.foreground": "#ffffff",
+        "editor.selectionBackground": "#ffffff22",
+        "editor.inactiveSelectionBackground": "#ffffff14",
+        "editor.lineHighlightBackground": "#0c0c0c",
+        "editor.lineHighlightBorder": "#00000000",
+        "editorIndentGuide.background1": "#1a1a1a",
+        "editorIndentGuide.activeBackground1": "#333333",
+        "editorWhitespace.foreground": "#222222",
+        "editorGutter.background": "#000000",
+        "editorWidget.background": "#0f0f0f",
+        "editorWidget.border": "#262626",
+        "editorSuggestWidget.background": "#0f0f0f",
+        "editorSuggestWidget.selectedBackground": "#1e1e1e",
+        "editorBracketMatch.background": "#ffffff1a",
+        "editorBracketMatch.border": "#3a3a3a",
+        "minimap.background": "#000000",
+        "scrollbarSlider.background": "#ffffff14",
+        "scrollbarSlider.hoverBackground": "#ffffff22",
+      },
+    });
   };
 
   const handleEditorDidMount = (editor: unknown) => {
@@ -794,7 +867,7 @@ function EditorContent() {
   useEffect(() => {
     if (activeProject) {
       try {
-        const saved = localStorage.getItem(`auraedit_chat_${activeProject.id}`);
+        const saved = localStorage.getItem(`forge_chat_${activeProject.id}`);
         setMessages(saved ? JSON.parse(saved) : []);
       } catch (_) { setMessages([]); }
     }
@@ -803,7 +876,7 @@ function EditorContent() {
   // Persist chat history
   useEffect(() => {
     if (activeProject && messages.length > 0) {
-      localStorage.setItem(`auraedit_chat_${activeProject.id}`, JSON.stringify(messages));
+      localStorage.setItem(`forge_chat_${activeProject.id}`, JSON.stringify(messages));
     }
   }, [messages, activeProject]);
 
@@ -817,9 +890,9 @@ function EditorContent() {
 
   // Restore panel widths
   useEffect(() => {
-    const s = localStorage.getItem("auraedit_sidebar_width");
-    const c = localStorage.getItem("auraedit_chat_width");
-    const pv = localStorage.getItem("auraedit_preview_width");
+    const s = localStorage.getItem("forge_sidebar_width");
+    const c = localStorage.getItem("forge_chat_width");
+    const pv = localStorage.getItem("forge_preview_width");
     if (s) setSidebarWidth(parseInt(s, 10));
     if (c) setChatWidth(parseInt(c, 10));
     if (pv) setPreviewWidth(parseInt(pv, 10));
@@ -906,7 +979,7 @@ function EditorContent() {
               <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
             </svg>
           </div>
-          AuraEdit
+          Forge
         </div>
         <div className="loading-bar-container"><div className="loading-bar-fill" /></div>
       </div>
@@ -925,7 +998,7 @@ function EditorContent() {
           </svg>
           <h2 style={{ color: "#fff", fontWeight: 800, fontSize: "1.5rem", letterSpacing: "-0.03em" }}>Sign in to continue</h2>
           <p style={{ color: "var(--text-secondary)", fontSize: "0.88rem", lineHeight: 1.6, maxWidth: 340, textAlign: "center" }}>
-            AuraEdit requires authentication. Sign in to access your workspace.
+            Forge requires authentication. Sign in to access your workspace.
           </p>
           <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.25rem" }}>
             <Link href="/" className="btn btn-secondary">Back Home</Link>
@@ -1010,7 +1083,8 @@ function EditorContent() {
             <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
               {activeFilePath && !tabBinaryStatus[activeFilePath] && (
                 <>
-                  <button className="sidebar-action-btn" onClick={() => setWordWrap((p) => (p === "on" ? "off" : "on"))} title="Toggle Word Wrap" style={{ color: wordWrap === "on" ? "var(--color-cyan)" : "inherit", fontSize: "0.75rem", padding: "0.2rem 0.4rem" }}>Wrap</button>
+                  <button className="sidebar-action-btn" onClick={() => setWordWrap((p) => (p === "on" ? "off" : "on"))} title="Toggle Word Wrap" style={{ color: wordWrap === "on" ? "var(--text-bright)" : "inherit", fontSize: "0.75rem", padding: "0.2rem 0.4rem" }}>Wrap</button>
+                  <button className="sidebar-action-btn" onClick={() => setMinimapOn((p) => !p)} title="Toggle Minimap" style={{ color: minimapOn ? "var(--text-bright)" : "inherit", fontSize: "0.75rem", padding: "0.2rem 0.4rem" }}>Map</button>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.15rem", borderRight: "1px solid var(--border-color)", paddingRight: "0.5rem" }}>
                     <button className="sidebar-action-btn" onClick={() => setFontSize((p) => Math.max(10, p - 1))} style={{ padding: "0.15rem 0.3rem" }}>A-</button>
                     <span style={{ fontSize: "0.75rem", minWidth: "1.2rem", textAlign: "center" }}>{fontSize}</span>
@@ -1111,7 +1185,7 @@ function EditorContent() {
                 <Editor
                   height="100%"
                   width="100%"
-                  theme="vs-dark"
+                  theme="forge-dark"
                   path={activeFilePath}
                   language={detectLanguage(activeFilePath)}
                   value={tempContent}
@@ -1122,11 +1196,27 @@ function EditorContent() {
                     fontFamily: "var(--font-mono)",
                     fontSize,
                     lineHeight: fontSize + 8,
-                    minimap: { enabled: true },
-                    scrollbar: { vertical: "visible", horizontal: "visible" },
+                    fontLigatures: true,
+                    minimap: { enabled: minimapOn, renderCharacters: false },
+                    scrollbar: { vertical: "visible", horizontal: "visible", verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
                     automaticLayout: true,
-                    padding: { top: 10 },
+                    padding: { top: 14, bottom: 14 },
                     wordWrap,
+                    cursorBlinking: "smooth",
+                    cursorSmoothCaretAnimation: "on",
+                    smoothScrolling: true,
+                    bracketPairColorization: { enabled: true },
+                    guides: { bracketPairs: true, indentation: true },
+                    stickyScroll: { enabled: true },
+                    renderWhitespace: "selection",
+                    renderLineHighlight: "all",
+                    formatOnPaste: true,
+                    formatOnType: true,
+                    tabSize: 2,
+                    scrollBeyondLastLine: false,
+                    roundedSelection: true,
+                    suggestSelection: "first",
+                    quickSuggestions: { other: true, comments: false, strings: false },
                   }}
                 />
               )
@@ -1149,20 +1239,18 @@ function EditorContent() {
           />
         </main>
 
-        {/* Preview Panel */}
-        {showPreview && (
-          <PreviewPanel
-            show={showPreview}
-            onClose={() => setShowPreview(false)}
-            activeProject={activeProject}
-            fileTree={fileTree}
-            tabContents={tabContents}
-            activeFilePath={activeFilePath}
-            previewWidth={previewWidth}
-            handlePreviewMouseDown={handlePreviewMouseDown}
-            getToken={getToken}
-          />
-        )}
+        {/* Preview Panel — kept mounted (hidden via CSS when closed) so the
+            WebContainer dev server survives and reopening is instant. */}
+        <PreviewPanel
+          show={showPreview}
+          onClose={() => setShowPreview(false)}
+          activeProject={activeProject}
+          fileTree={fileTree}
+          tabContents={tabContents}
+          previewWidth={previewWidth}
+          handlePreviewMouseDown={handlePreviewMouseDown}
+          getToken={getToken}
+        />
 
         {/* Chat Panel */}
         {showChat && (
@@ -1172,6 +1260,7 @@ function EditorContent() {
             chatInput={chatInput}
             setChatInput={setChatInput}
             handleSendChat={handleSendChat}
+            stopStreaming={stopStreaming}
             streamingActive={streamingActive}
             attachedFile={attachedFile}
             setAttachedFile={setAttachedFile}
@@ -1300,7 +1389,7 @@ function EditorContent() {
               <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
             </svg>
           </div>
-          <span>AuraEdit AI</span>
+          <span>Forge</span>
         </div>
         <div className="nav-actions">
           <Link href="/" className="btn btn-secondary">Home</Link>
@@ -1318,7 +1407,7 @@ function EditorContent() {
         <ProjectTemplates onCreate={handleCreateTemplate} loading={creatingTemplate} />
 
         <div className="lobby-divider">
-          <span>or upload an existing project</span>
+          <span>or import an existing Next.js project</span>
         </div>
 
         <div className="lobby-grid">
@@ -1340,8 +1429,8 @@ function EditorContent() {
                 </svg>
               )}
             </div>
-            <span className="upload-zone-title">{uploading ? "Analyzing Files..." : "Upload Project Folder"}</span>
-            <p className="upload-zone-desc">Auto-filters node_modules, build targets, and binaries.</p>
+            <span className="upload-zone-title">{uploading ? "Analyzing Files..." : "Import a Next.js Project"}</span>
+            <p className="upload-zone-desc">Only Next.js projects are supported. Auto-filters node_modules & build output.</p>
           </div>
 
           {/* Project list */}
@@ -1357,7 +1446,7 @@ function EditorContent() {
             </>
           ) : projects.length === 0 ? (
             <div style={{ gridColumn: "1 / -1", color: "var(--text-muted)", fontStyle: "italic", padding: "3rem 1rem", border: "1px dashed var(--border-color)", borderRadius: "1rem", textAlign: "center" }}>
-              No projects yet. Upload a folder or start from a template above.
+              No projects yet. Create a new Next.js app or import one above.
             </div>
           ) : (
             <AnimatePresence mode="popLayout">
@@ -1401,7 +1490,7 @@ export default function EditorPage() {
                 <polyline points="8 6 2 12 8 18" />
               </svg>
             </div>
-            AuraEdit
+            Forge
           </div>
           <div className="loading-bar-container">
             <div className="loading-bar-fill" />

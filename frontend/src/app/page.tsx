@@ -7,12 +7,11 @@ import { useEffect, useState } from "react";
 
 // ── Typewriter demo sequence ─────────────────────────────────
 const DEMO_FRAMES = [
-  { type: "user", text: "Add a dark mode toggle to my React app" },
-  { type: "tool", text: "📖 Reading src/App.tsx..." },
-  { type: "tool", text: "📖 Reading src/index.css..." },
-  { type: "tool", text: "✏️ Modifying src/App.tsx  +24 -2" },
-  { type: "tool", text: "✏️ Modifying src/index.css  +18 -0" },
-  { type: "ai", text: "Done! Added a dark mode toggle that persists in localStorage. Try it in the preview →" },
+  { type: "user", text: "Add a pricing page with three tiers" },
+  { type: "tool", text: "📖 Reading app/page.tsx..." },
+  { type: "tool", text: "➕ Creating app/pricing/page.tsx  +48 -0" },
+  { type: "tool", text: "✏️ Modifying components/Nav.tsx  +3 -0" },
+  { type: "ai", text: "Done! Added an /app/pricing route with a responsive three-tier layout in Tailwind. It's live in the preview →" },
 ];
 
 function TypewriterDemo() {
@@ -59,7 +58,7 @@ function TypewriterDemo() {
         <span className="demo-dot demo-dot-red" />
         <span className="demo-dot demo-dot-yellow" />
         <span className="demo-dot demo-dot-green" />
-        <span className="demo-window-title">AuraEdit AI · workspace</span>
+        <span className="demo-window-title">Forge · workspace</span>
       </div>
       <div className="demo-body">
         {visible.map((frame, i) => (
@@ -94,9 +93,9 @@ const FEATURES = [
         <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
       </svg>
     ),
-    title: "Reads Your Codebase",
-    desc: "The AI scans your entire project before responding — understanding file structure, dependencies, and patterns.",
-    accent: "#22d3ee",
+    title: "App Router-Aware AI",
+    desc: "The AI knows Next.js — server vs client components, file-based routing, layouts, and Tailwind. It edits your project directly.",
+    accent: "#ffffff",
   },
   {
     icon: (
@@ -106,9 +105,9 @@ const FEATURES = [
         <path d="M2 12l10 5 10-5" />
       </svg>
     ),
-    title: "5 AI Models",
-    desc: "Switch between Gemini 2.5 Pro, Flash, Llama 3 70B, Mixtral, and more — all from one dropdown.",
-    accent: "#818cf8",
+    title: "Multiple AI Models",
+    desc: "Switch between Gemini 2.5 Pro, Flash, Llama 3, Mixtral, and more — all from one dropdown.",
+    accent: "#ffffff",
   },
   {
     icon: (
@@ -119,7 +118,7 @@ const FEATURES = [
     ),
     title: "Instant Revert",
     desc: "Every AI response creates a restore point. One click brings your project back to any previous state.",
-    accent: "#34d399",
+    accent: "#ffffff",
   },
   {
     icon: (
@@ -127,9 +126,9 @@ const FEATURES = [
         <polygon points="5 3 19 12 5 21 5 3" />
       </svg>
     ),
-    title: "Live Preview",
-    desc: "Run HTML/CSS/JS projects in a sandboxed iframe. Node.js apps boot via WebContainers — no server needed.",
-    accent: "#fb923c",
+    title: "Live Next.js Preview",
+    desc: "Your app runs a real next dev server in the browser via WebContainers. Edits hot-reload instantly — no setup, no server.",
+    accent: "#ffffff",
   },
   {
     icon: (
@@ -140,8 +139,8 @@ const FEATURES = [
       </svg>
     ),
     title: "Monaco Editor",
-    desc: "The same editor that powers VS Code — with syntax highlighting, multi-tab, word wrap, and minimap.",
-    accent: "#f472b6",
+    desc: "The same editor that powers VS Code — with TypeScript intellisense, multi-tab, bracket colorization, and minimap.",
+    accent: "#ffffff",
   },
   {
     icon: (
@@ -152,23 +151,23 @@ const FEATURES = [
         <path d="M16 3.13a4 4 0 0 1 0 7.75" />
       </svg>
     ),
-    title: "Cloud Workspaces",
-    desc: "Projects are stored in PostgreSQL and synced to your account. Pick up exactly where you left off.",
-    accent: "#a3e635",
+    title: "Import or Start Fresh",
+    desc: "Scaffold a new Next.js app in one click, or import an existing Next.js repo. Everything syncs to your cloud workspace.",
+    accent: "#ffffff",
   },
 ];
 
 // ── How it works steps ───────────────────────────────────────
 const STEPS = [
-  { num: "01", title: "Upload or create a project", desc: "Drag in your code folder, or start from a template (HTML, React, Express). Files are stored in your personal cloud vault." },
-  { num: "02", title: "Open the AI chat", desc: "Ask anything — explain this file, refactor this function, add authentication. The AI reads your code first." },
-  { num: "03", title: "Review & revert instantly", desc: "See exactly what changed with +/- line counts and diff viewer. Restore to any checkpoint with one click." },
+  { num: "01", title: "Create or import a Next.js app", desc: "Scaffold a Next.js 15 + TypeScript + Tailwind starter in one click, or import an existing Next.js repo into your cloud workspace." },
+  { num: "02", title: "Build with the AI chat", desc: "Ask for routes, components, and features. The AI understands the App Router and edits your files directly." },
+  { num: "03", title: "Preview & ship", desc: "Watch it run live in the in-browser dev server. See every change with +/- diffs and restore any checkpoint with one click." },
 ];
 
 // ── Tech badges ──────────────────────────────────────────────
 const TECH_STACK = [
-  "Gemini 2.5", "Groq", "Llama 3", "Monaco Editor",
-  "Next.js 16", "Express", "Clerk Auth", "Prisma", "PostgreSQL", "WebContainers",
+  "Next.js 15", "App Router", "TypeScript", "Tailwind CSS",
+  "Gemini", "Groq", "Monaco Editor", "WebContainers", "Clerk Auth", "PostgreSQL",
 ];
 
 export default function Home() {
@@ -192,7 +191,7 @@ export default function Home() {
               <polyline points="8 6 2 12 8 18" />
             </svg>
           </div>
-          AuraEdit
+          Forge
         </div>
         <div className="nav-actions">
           {!isLoaded ? (
@@ -217,7 +216,7 @@ export default function Home() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
           <div className="hero-badge">
             <span className="hero-badge-dot" />
-            AI-Powered Code Editor · Portfolio Project
+            The AI Next.js app builder
           </div>
         </motion.div>
 
@@ -227,7 +226,7 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
         >
-          Code at the speed<br />of <span>thought</span>
+          Craft Next.js apps<br />with <span>AI</span>
         </motion.h1>
 
         <motion.p
@@ -236,7 +235,7 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.16, ease: [0.16, 1, 0.3, 1] }}
         >
-          An AI-native code editor that reads your codebase, understands it,<br />and makes multi-file changes — all in one cloud workspace.
+          Forge is an AI editor built for Next.js. Describe what you want,<br />and it writes the routes, components, and styles — running live in your browser.
         </motion.p>
 
         <motion.div
@@ -277,8 +276,8 @@ export default function Home() {
           transition={{ duration: 0.6, delay: 0.4 }}
         >
           {[
-            { val: "5+", label: "AI Models" },
-            { val: "Live", label: "Code Preview" },
+            { val: "Next.js", label: "App Router" },
+            { val: "Live", label: "In-browser Preview" },
             { val: "1-click", label: "Revert" },
             { val: "Cloud", label: "Workspace" },
           ].map((s) => (
@@ -403,8 +402,8 @@ export default function Home() {
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
         >
-          <h2 className="cta-title">Ready to build something?</h2>
-          <p className="cta-sub">Upload your project folder and start chatting with the AI in under 30 seconds.</p>
+          <h2 className="cta-title">Ready to build your Next.js app?</h2>
+          <p className="cta-sub">Spin up a Next.js starter and start building with the AI in under 30 seconds.</p>
           {isLoaded && (
             isSignedIn ? (
               <Link href="/editor" className="hero-cta-primary">
@@ -427,11 +426,11 @@ export default function Home() {
               <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
             </svg>
           </div>
-          AuraEdit AI
+          Forge
         </div>
         <div className="footer-links">
           <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
-            © {new Date().getFullYear()} AuraEdit · Built with Next.js, Express &amp; Gemini
+            © {new Date().getFullYear()} Forge · Built with Next.js &amp; Gemini
           </span>
         </div>
       </footer>

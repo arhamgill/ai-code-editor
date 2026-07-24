@@ -69,6 +69,39 @@ async function readDirectoryTree(dirPath, baseDir) {
   });
 }
 
+// Helper to verify an uploaded project is a Next.js project.
+// Strict rule: root package.json must list `next` in dependencies/devDependencies.
+// Fallbacks: presence of a next.config.* file, or an app/ or pages/ directory entry.
+function isNextProject(files) {
+  const norm = (p) => String(p || "").replace(/\\/g, "/").replace(/^\.?\//, "");
+
+  // 1. package.json with a `next` dependency (strongest signal)
+  const pkgFile = files.find((f) => norm(f.path).toLowerCase() === "package.json");
+  if (pkgFile) {
+    try {
+      const pkg = JSON.parse(pkgFile.content || "{}");
+      const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+      if (deps.next) return true;
+    } catch (_) {
+      // malformed package.json — fall through to structural checks
+    }
+  }
+
+  // 2. Structural fallbacks
+  return files.some((f) => {
+    const p = norm(f.path).toLowerCase();
+    return (
+      p === "next.config.js" ||
+      p === "next.config.mjs" ||
+      p === "next.config.ts" ||
+      p.startsWith("app/") ||
+      p.startsWith("pages/") ||
+      p.startsWith("src/app/") ||
+      p.startsWith("src/pages/")
+    );
+  });
+}
+
 // Helper to recursively delete folders on disk (Node v14+ alternative)
 async function deleteFolderRecursive(folderPath) {
   try {
@@ -109,6 +142,14 @@ router.post("/upload", async (req, res) => {
   const sanitizedName = name.replace(/[^a-zA-Z0-9-_ ]/g, "").trim();
   if (!sanitizedName) {
     return res.status(400).json({ error: "Bad Request", message: "Invalid project name." });
+  }
+
+  // Enforce Next.js-only: reject anything that isn't a Next.js project
+  if (!isNextProject(files)) {
+    return res.status(422).json({
+      error: "Unprocessable Entity",
+      message: "Only Next.js projects can be imported. Make sure your folder has a package.json with \"next\" as a dependency (and an app/ or pages/ directory).",
+    });
   }
 
   try {
