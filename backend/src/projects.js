@@ -50,7 +50,7 @@ async function readDirectoryTree(dirPath, baseDir) {
     } else {
       // Skip blacklisted binary file extensions
       const ext = path.extname(entry.name).toLowerCase();
-      if ([".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".dll", ".exe", ".tmp"].includes(ext)) {
+      if ([".pdf", ".zip", ".tar", ".gz", ".dll", ".exe", ".tmp"].includes(ext)) {
         continue;
       }
 
@@ -139,19 +139,27 @@ router.post("/upload", async (req, res) => {
         continue;
       }
 
-      // Check binary extensions
-      const ext = path.extname(relativePath).toLowerCase();
-      if ([".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".dll", ".exe", ".tmp"].includes(ext)) {
-        continue;
-      }
-
       const absolutePath = getSecurePath(auth.userId, sanitizedName, relativePath);
       const directory = path.dirname(absolutePath);
 
       // Ensure subdirectory structure exists
       await fs.mkdir(directory, { recursive: true });
-      // Write file contents
-      await fs.writeFile(absolutePath, content, "utf8");
+
+      // If the content is a Base64 Data URL, write as raw binary buffer
+      if (typeof content === "string" && content.startsWith("data:") && content.includes(";base64,")) {
+        try {
+          const base64Data = content.split(";base64,").pop();
+          if (base64Data) {
+            await fs.writeFile(absolutePath, Buffer.from(base64Data, "base64"));
+          } else {
+            await fs.writeFile(absolutePath, content, "utf8");
+          }
+        } catch (_) {
+          await fs.writeFile(absolutePath, content, "utf8");
+        }
+      } else {
+        await fs.writeFile(absolutePath, content || "", "utf8");
+      }
     }
 
     console.log(`[Storage] Saved project [${sanitizedName}] for user [${auth.userId}]`);
@@ -207,9 +215,22 @@ router.post("/:id/read", async (req, res) => {
     }
 
     const absolutePath = getSecurePath(auth.userId, project.name, relativePath);
-    const content = await fs.readFile(absolutePath, "utf8");
+    const ext = path.extname(absolutePath).toLowerCase();
+    const isBinaryImage = [".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp"].includes(ext);
 
-    res.json({ path: relativePath, content });
+    if (isBinaryImage) {
+      const buffer = await fs.readFile(absolutePath);
+      const mime = ext === ".webp" ? "image/webp" : `image/${ext.replace(".", "")}`;
+      const base64 = buffer.toString("base64");
+      res.json({
+        path: relativePath,
+        content: `data:${mime};base64,${base64}`,
+        isBinary: true
+      });
+    } else {
+      const content = await fs.readFile(absolutePath, "utf8");
+      res.json({ path: relativePath, content, isBinary: false });
+    }
   } catch (err) {
     res.status(500).json({ error: "Internal Server Error", message: err.message });
   }
@@ -239,10 +260,60 @@ router.post("/:id/write", async (req, res) => {
 
     // Ensure containing directory exists (for new file creations)
     await fs.mkdir(directory, { recursive: true });
-    // Write new content
-    await fs.writeFile(absolutePath, content, "utf8");
+
+    // If the content is a Base64 Data URL, write as raw binary buffer
+    if (typeof content === "string" && content.startsWith("data:") && content.includes(";base64,")) {
+      try {
+        const base64Data = content.split(";base64,").pop();
+        if (base64Data) {
+          await fs.writeFile(absolutePath, Buffer.from(base64Data, "base64"));
+        } else {
+          await fs.writeFile(absolutePath, content, "utf8");
+        }
+      } catch (_) {
+        await fs.writeFile(absolutePath, content, "utf8");
+      }
+    } else {
+      await fs.writeFile(absolutePath, content || "", "utf8");
+    }
 
     console.log(`[Storage] File updated: ${relativePath} in project ${project.name}`);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Internal Server Error", message: err.message });
+  }
+});
+
+// 5.1 POST /api/projects/:id/rename - Rename/move a file or directory
+router.post("/:id/rename", async (req, res) => {
+  const auth = getAuth(req);
+  if (!auth.userId) return res.status(401).json({ error: "Unauthorized" });
+
+  const { oldPath, newPath } = req.body;
+  if (!oldPath || !newPath) {
+    return res.status(400).json({ error: "Bad Request", message: "oldPath and newPath are required." });
+  }
+
+  try {
+    const project = await prisma.project.findFirst({
+      where: { id: req.params.id, userId: auth.userId }
+    });
+
+    if (!project) {
+      return res.status(404).json({ error: "Not Found", message: "Project not found." });
+    }
+
+    const absoluteOldPath = getSecurePath(auth.userId, project.name, oldPath);
+    const absoluteNewPath = getSecurePath(auth.userId, project.name, newPath);
+    const directory = path.dirname(absoluteNewPath);
+
+    // Ensure target subdirectory structure exists (in case it is moved to a new subfolder)
+    await fs.mkdir(directory, { recursive: true });
+
+    // Rename/move
+    await fs.rename(absoluteOldPath, absoluteNewPath);
+
+    console.log(`[Storage] Renamed: ${oldPath} -> ${newPath} in project ${project.name}`);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Internal Server Error", message: err.message });
@@ -339,6 +410,60 @@ router.delete("/:id", async (req, res) => {
 
     console.log(`[Storage] Deleted project [${project.name}] for user [${auth.userId}]`);
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Internal Server Error", message: err.message });
+  }
+});
+
+// 7. GET /api/projects/:id/stats - Return file count, folder count, and total size
+router.get("/:id/stats", async (req, res) => {
+  const auth = getAuth(req);
+  if (!auth.userId) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    const project = await prisma.project.findFirst({
+      where: { id: req.params.id, userId: auth.userId }
+    });
+
+    if (!project) {
+      return res.status(404).json({ error: "Not Found", message: "Project not found." });
+    }
+
+    const projectDir = getSecurePath(auth.userId, project.name);
+    await fs.mkdir(projectDir, { recursive: true });
+
+    let fileCount = 0;
+    let dirCount = 0;
+    let totalSize = 0;
+
+    async function walk(currentPath) {
+      const entries = await fs.readdir(currentPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (["node_modules", "dist", ".next", ".git", ".turbo", "build", "out", ".prisma"].includes(entry.name)) {
+          continue;
+        }
+        const fullPath = path.join(currentPath, entry.name);
+        if (entry.isDirectory()) {
+          dirCount++;
+          await walk(fullPath);
+        } else {
+          fileCount++;
+          const stat = await fs.stat(fullPath);
+          totalSize += stat.size;
+        }
+      }
+    }
+
+    await walk(projectDir);
+
+    res.json({
+      id: project.id,
+      name: project.name,
+      createdAt: project.createdAt,
+      fileCount,
+      dirCount,
+      totalSize
+    });
   } catch (err) {
     res.status(500).json({ error: "Internal Server Error", message: err.message });
   }

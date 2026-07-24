@@ -6,6 +6,7 @@ import { clerkMiddleware, clerkClient, getAuth } from "@clerk/express";
 import prisma from "./db.js";
 import projectRouter from "./projects.js";
 import chatRouter from "./chat.js";
+import agentRouter from "./agent.js";
 
 // Load environment variables
 dotenv.config();
@@ -27,6 +28,9 @@ app.use("/api/projects", projectRouter);
 
 // Mount chat API router
 app.use("/api/chat", chatRouter);
+
+// Mount AI agent router
+app.use("/api/agent", agentRouter);
 
 // Helper to ensure Clerk user is synced with local Postgres DB
 async function getOrSyncUser(userId) {

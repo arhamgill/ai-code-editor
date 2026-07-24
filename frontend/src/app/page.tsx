@@ -1,597 +1,439 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { UserButton, useAuth, useUser } from "@clerk/nextjs";
+import { useAuth, UserButton } from "@clerk/nextjs";
+import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 
-interface HealthResponse {
-  status: string;
-  uptime: number;
-  timestamp: string;
-}
+// ── Typewriter demo sequence ─────────────────────────────────
+const DEMO_FRAMES = [
+  { type: "user", text: "Add a dark mode toggle to my React app" },
+  { type: "tool", text: "📖 Reading src/App.tsx..." },
+  { type: "tool", text: "📖 Reading src/index.css..." },
+  { type: "tool", text: "✏️ Modifying src/App.tsx  +24 -2" },
+  { type: "tool", text: "✏️ Modifying src/index.css  +18 -0" },
+  { type: "ai", text: "Done! Added a dark mode toggle that persists in localStorage. Try it in the preview →" },
+];
 
-interface SecureResponse {
-  message: string;
-  userId: string;
-  email: string;
-  snippetCount: number;
-  timestamp: string;
-}
-
-interface Snippet {
-  id: string;
-  title: string;
-  code: string;
-  createdAt: string;
-}
-
-export default function Home() {
-  const { isSignedIn, getToken } = useAuth();
-  const { user } = useUser();
-
-  // Express API States
-  const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "offline">("checking");
-  const [healthData, setHealthData] = useState<HealthResponse | null>(null);
-
-  // Secure Route States
-  const [secureStatus, setSecureStatus] = useState<"idle" | "checking" | "authorized" | "unauthorized" | "offline">("idle");
-  const [secureData, setSecureData] = useState<SecureResponse | null>(null);
-
-  // Database Snippets States
-  const [snippets, setSnippets] = useState<Snippet[]>([]);
-  const [newTitle, setNewTitle] = useState("");
-  const [newCode, setNewCode] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [loadingSnippets, setLoadingSnippets] = useState(false);
-
-  const checkHealthAndSecureRoute = async () => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-
-    // 1. Check Public Health Endpoint
-    try {
-      const res = await fetch(`${apiUrl}/api/health`);
-      if (res.ok) {
-        const data: HealthResponse = await res.json();
-        setBackendStatus("online");
-        setHealthData(data);
-      } else {
-        setBackendStatus("offline");
-      }
-    } catch (err) {
-      setBackendStatus("offline");
-    }
-
-    // 2. Check Protected Secure Route
-    if (!isSignedIn) {
-      setSecureStatus("unauthorized");
-      setSecureData(null);
-      return;
-    }
-
-    try {
-      setSecureStatus("checking");
-      const token = await getToken();
-      if (!token) {
-        setSecureStatus("unauthorized");
-        return;
-      }
-
-      const res = await fetch(`${apiUrl}/api/protected`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      if (res.ok) {
-        const data: SecureResponse = await res.json();
-        setSecureStatus("authorized");
-        setSecureData(data);
-      } else {
-        setSecureStatus("unauthorized");
-      }
-    } catch (err) {
-      setSecureStatus("offline");
-    }
-  };
-
-  const fetchSnippets = async () => {
-    if (!isSignedIn) return;
-    try {
-      setLoadingSnippets(true);
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const token = await getToken();
-      const res = await fetch(`${apiUrl}/api/snippets`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSnippets(data);
-      }
-    } catch (err) {
-      console.error("Failed to fetch snippets from database:", err);
-    } finally {
-      setLoadingSnippets(false);
-    }
-  };
-
-  const handleSaveSnippet = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle.trim() || !newCode.trim()) return;
-
-    try {
-      setIsSaving(true);
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-      const token = await getToken();
-      const res = await fetch(`${apiUrl}/api/snippets`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          title: newTitle,
-          code: newCode
-        })
-      });
-
-      if (res.ok) {
-        setNewTitle("");
-        setNewCode("");
-        // Reload list and update user stats card
-        await fetchSnippets();
-        await checkHealthAndSecureRoute();
-      }
-    } catch (err) {
-      console.error("Failed to save snippet:", err);
-    } finally {
-      setIsSaving(false);
-    }
-  };
+function TypewriterDemo() {
+  const [frameIdx, setFrameIdx] = useState(0);
+  const [charIdx, setCharIdx] = useState(0);
+  const [visible, setVisible] = useState<typeof DEMO_FRAMES>([]);
 
   useEffect(() => {
-    checkHealthAndSecureRoute();
-    if (isSignedIn) {
-      fetchSnippets();
-    } else {
-      setSnippets([]);
+    if (frameIdx >= DEMO_FRAMES.length) {
+      // Pause then restart
+      const timer = setTimeout(() => {
+        setFrameIdx(0);
+        setCharIdx(0);
+        setVisible([]);
+      }, 3500);
+      return () => clearTimeout(timer);
     }
 
-    const interval = setInterval(() => {
-      checkHealthAndSecureRoute();
-      if (isSignedIn) {
-        fetchSnippets();
-      }
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [isSignedIn]);
+    const frame = DEMO_FRAMES[frameIdx];
+    const fullText = frame.text;
+
+    if (charIdx < fullText.length) {
+      const speed = frame.type === "tool" ? 18 : 28;
+      const timer = setTimeout(() => setCharIdx((c) => c + 1), speed);
+      return () => clearTimeout(timer);
+    } else {
+      // Current frame complete — advance after delay
+      const delay = frame.type === "ai" ? 1600 : frame.type === "user" ? 800 : 200;
+      const timer = setTimeout(() => {
+        setVisible((prev) => [...prev, frame]);
+        setFrameIdx((i) => i + 1);
+        setCharIdx(0);
+      }, delay);
+      return () => clearTimeout(timer);
+    }
+  }, [frameIdx, charIdx]);
+
+  const currentFrame = frameIdx < DEMO_FRAMES.length ? DEMO_FRAMES[frameIdx] : null;
+  const currentDisplayText = currentFrame ? currentFrame.text.slice(0, charIdx) : "";
 
   return (
-    <div className="app-container">
-      {/* Sticky Navigation Header */}
-      <header className="header">
+    <div className="demo-window">
+      <div className="demo-window-bar">
+        <span className="demo-dot demo-dot-red" />
+        <span className="demo-dot demo-dot-yellow" />
+        <span className="demo-dot demo-dot-green" />
+        <span className="demo-window-title">AuraEdit AI · workspace</span>
+      </div>
+      <div className="demo-body">
+        {visible.map((frame, i) => (
+          <div key={i} className={`demo-line demo-line-${frame.type}`}>
+            {frame.type === "user" && <span className="demo-prefix demo-prefix-user">You</span>}
+            {frame.type === "tool" && <span className="demo-prefix demo-prefix-tool">↳</span>}
+            {frame.type === "ai" && <span className="demo-prefix demo-prefix-ai">AI</span>}
+            <span>{frame.text}</span>
+          </div>
+        ))}
+        {currentFrame && (
+          <div className={`demo-line demo-line-${currentFrame.type}`}>
+            {currentFrame.type === "user" && <span className="demo-prefix demo-prefix-user">You</span>}
+            {currentFrame.type === "tool" && <span className="demo-prefix demo-prefix-tool">↳</span>}
+            {currentFrame.type === "ai" && <span className="demo-prefix demo-prefix-ai">AI</span>}
+            <span>
+              {currentDisplayText}
+              <span className="demo-cursor">▋</span>
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Feature cards ────────────────────────────────────────────
+const FEATURES = [
+  {
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+    ),
+    title: "Reads Your Codebase",
+    desc: "The AI scans your entire project before responding — understanding file structure, dependencies, and patterns.",
+    accent: "#22d3ee",
+  },
+  {
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M12 2L2 7l10 5 10-5-10-5z" />
+        <path d="M2 17l10 5 10-5" />
+        <path d="M2 12l10 5 10-5" />
+      </svg>
+    ),
+    title: "5 AI Models",
+    desc: "Switch between Gemini 2.5 Pro, Flash, Llama 3 70B, Mixtral, and more — all from one dropdown.",
+    accent: "#818cf8",
+  },
+  {
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <polyline points="9 11 12 14 22 4" />
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+      </svg>
+    ),
+    title: "Instant Revert",
+    desc: "Every AI response creates a restore point. One click brings your project back to any previous state.",
+    accent: "#34d399",
+  },
+  {
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <polygon points="5 3 19 12 5 21 5 3" />
+      </svg>
+    ),
+    title: "Live Preview",
+    desc: "Run HTML/CSS/JS projects in a sandboxed iframe. Node.js apps boot via WebContainers — no server needed.",
+    accent: "#fb923c",
+  },
+  {
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+        <line x1="8" y1="21" x2="16" y2="21" />
+        <line x1="12" y1="17" x2="12" y2="21" />
+      </svg>
+    ),
+    title: "Monaco Editor",
+    desc: "The same editor that powers VS Code — with syntax highlighting, multi-tab, word wrap, and minimap.",
+    accent: "#f472b6",
+  },
+  {
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    ),
+    title: "Cloud Workspaces",
+    desc: "Projects are stored in PostgreSQL and synced to your account. Pick up exactly where you left off.",
+    accent: "#a3e635",
+  },
+];
+
+// ── How it works steps ───────────────────────────────────────
+const STEPS = [
+  { num: "01", title: "Upload or create a project", desc: "Drag in your code folder, or start from a template (HTML, React, Express). Files are stored in your personal cloud vault." },
+  { num: "02", title: "Open the AI chat", desc: "Ask anything — explain this file, refactor this function, add authentication. The AI reads your code first." },
+  { num: "03", title: "Review & revert instantly", desc: "See exactly what changed with +/- line counts and diff viewer. Restore to any checkpoint with one click." },
+];
+
+// ── Tech badges ──────────────────────────────────────────────
+const TECH_STACK = [
+  "Gemini 2.5", "Groq", "Llama 3", "Monaco Editor",
+  "Next.js 16", "Express", "Clerk Auth", "Prisma", "PostgreSQL", "WebContainers",
+];
+
+export default function Home() {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  return (
+    <div className="home-container">
+      {/* Animated aurora background */}
+      <div className="home-aurora" aria-hidden="true">
+        <div className="aurora-orb aurora-orb-1" />
+        <div className="aurora-orb aurora-orb-2" />
+        <div className="aurora-orb aurora-orb-3" />
+      </div>
+
+      {/* Header */}
+      <header className="home-header">
         <div className="logo">
           <div className="logo-icon">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polyline points="16 18 22 12 16 6" />
               <polyline points="8 6 2 12 8 18" />
             </svg>
           </div>
-          <span>AuraEdit AI</span>
+          AuraEdit
         </div>
-        <ul className="nav-links">
-          <li><a href="#features" className="nav-link">Features</a></li>
-          <li><a href="#integration" className="nav-link">Integration</a></li>
-          <li><a href="#database" className="nav-link">Database Storage</a></li>
-          <li><Link href="/editor" className="nav-link" style={{ color: "var(--color-cyan)" }}>Open Editor</Link></li>
-        </ul>
         <div className="nav-actions">
-          <a href="#integration" className="btn btn-secondary">Check Connection</a>
-          {isSignedIn ? (
-            <UserButton afterSignOutUrl="/" appearance={{
-              elements: {
-                userButtonAvatarBox: {
-                  width: '2.25rem',
-                  height: '2.25rem',
-                  borderRadius: '0.5rem',
-                  border: '1px solid var(--border-color)'
-                }
-              }
-            }} />
+          {!isLoaded ? (
+            <div className="auth-skeleton" />
+          ) : isSignedIn ? (
+            <>
+              <Link href="/editor" className="btn btn-primary" style={{ fontSize: "0.82rem", padding: "0.45rem 0.9rem" }}>
+                Open Editor
+              </Link>
+              <UserButton appearance={{ elements: { userButtonAvatarBox: { width: "2rem", height: "2rem", borderRadius: "6px", border: "1px solid #222" } } }} />
+            </>
           ) : (
-            <Link href="/sign-in" className="btn btn-primary">Sign In</Link>
+            <Link href="/sign-in" className="btn btn-secondary" style={{ fontSize: "0.82rem" }}>
+              Sign in
+            </Link>
           )}
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main>
-        {/* Hero Section */}
-        <section className="hero">
-          <div className="hero-tag">AuraEdit v1.0.0 is Live</div>
-          <h1 className="hero-title">
-            Write Code at the Speed of Thought
-          </h1>
-          
-          {isSignedIn ? (
-            <p className="hero-subtitle" style={{ color: "#a5b4fc", fontWeight: 600 }}>
-              Welcome back, {user?.firstName || user?.username || "Developer"}! 👋
-            </p>
-          ) : (
-            <p className="hero-subtitle">
-              A premium, next-generation development platform powered by local AI capabilities. Fully integrated Next.js frontend, Express backend, and Clerk auth.
-            </p>
-          )}
+      {/* ── Hero ──────────────────────────────────────────── */}
+      <main className="hero-section">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}>
+          <div className="hero-badge">
+            <span className="hero-badge-dot" />
+            AI-Powered Code Editor · Portfolio Project
+          </div>
+        </motion.div>
 
-          <div className="hero-ctas">
-            {isSignedIn ? (
-              <div style={{ display: "flex", gap: "1rem" }}>
-                <Link href="/editor" className="btn btn-primary" style={{ padding: "0.875rem 2rem", fontSize: "1rem" }}>
-                  Launch Code Editor
-                </Link>
-                <a href="#database" className="btn btn-secondary" style={{ padding: "0.875rem 2rem", fontSize: "1rem" }}>
-                  My Saved Snippets ({snippets.length})
-                </a>
-              </div>
+        <motion.h1
+          className="hero-title"
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
+        >
+          Code at the speed<br />of <span>thought</span>
+        </motion.h1>
+
+        <motion.p
+          className="hero-subtitle"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.16, ease: [0.16, 1, 0.3, 1] }}
+        >
+          An AI-native code editor that reads your codebase, understands it,<br />and makes multi-file changes — all in one cloud workspace.
+        </motion.p>
+
+        <motion.div
+          className="hero-actions"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.24, ease: [0.16, 1, 0.3, 1] }}
+        >
+          {isLoaded ? (
+            isSignedIn ? (
+              <Link href="/editor" className="hero-cta-primary">
+                Open Editor
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+                </svg>
+              </Link>
             ) : (
-              <Link href="/sign-in" className="btn btn-primary" style={{ padding: "0.875rem 2rem", fontSize: "1rem" }}>
-                Sign In to Start
-              </Link>
-            )}
-            <a 
-              href="https://github.com" 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="btn btn-secondary" 
-              style={{ padding: "0.875rem 2rem", fontSize: "1rem" }}
-            >
-              View Repository
-            </a>
-          </div>
-
-          {/* Interactive Code Editor Preview Mockup */}
-          <div className="demo-container">
-            <div className="editor-window">
-              <div className="editor-header">
-                <div className="window-dots">
-                  <div className="dot dot-red"></div>
-                  <div className="dot dot-yellow"></div>
-                  <div className="dot dot-green"></div>
-                </div>
-                <div className="file-tab">App.tsx</div>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                  TypeScript - UTF-8
-                </div>
-              </div>
-              <div className="editor-body">
-                <div className="line-numbers">
-                  <div>1</div>
-                  <div>2</div>
-                  <div>3</div>
-                  <div>4</div>
-                  <div>5</div>
-                  <div>6</div>
-                  <div>7</div>
-                </div>
-                <div className="code-content" style={{ paddingLeft: "1.5rem" }}>
-                  <div>
-                    <span className="code-keyword">import</span> React <span className="code-keyword">from</span> <span className="code-string">"react"</span>;
-                  </div>
-                  <div>
-                    <span className="code-comment">// AuraEdit Autocomplete Suggestion</span>
-                  </div>
-                  <div>
-                    <span className="code-keyword">export default function</span> <span className="code-function">AuraApp</span>() &#123;
-                  </div>
-                  <div style={{ paddingLeft: "1.5rem" }}>
-                    <span className="code-keyword">const</span> [state, setState] = React.<span className="code-function">useState</span>(<span className="code-string">"Active"</span>);
-                  </div>
-                  <div style={{ paddingLeft: "1.5rem" }}>
-                    <span className="code-keyword">return</span> &lt;<span className="code-function">div</span>&gt;Aura AI Active: &#123;state&#125;&lt;/<span className="code-function">div</span>&gt;;
-                  </div>
-                  <div>&#125;</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Integration Live Status Cards */}
-        <section id="integration" style={{ padding: "2rem 1rem", maxWidth: "900px", margin: "0 auto" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))", gap: "2rem" }}>
-            
-            {/* Express Backend Live Status Card */}
-            <div className="status-card" style={{ margin: 0, width: "100%", maxWidth: "none" }}>
-              <div className="status-info">
-                <span className="status-title">Express API Server Connection</span>
-                <p className="status-description">
-                  {backendStatus === "online" && healthData
-                    ? `Connected! Server uptime: ${Math.floor(healthData.uptime)}s. Live connection active.`
-                    : backendStatus === "checking"
-                    ? "Pinging Express backend server..."
-                    : "Unable to reach the Express backend server. Make sure the Node server is running."}
-                </p>
-              </div>
-              <div className="status-indicator">
-                <div
-                  className={`status-dot ${
-                    backendStatus === "online"
-                      ? "status-online"
-                      : backendStatus === "offline"
-                      ? "status-offline"
-                      : ""
-                  }`}
-                  style={{
-                    backgroundColor:
-                      backendStatus === "checking" ? "var(--color-warning)" : undefined,
-                    boxShadow:
-                      backendStatus === "checking" ? "0 0 10px rgba(245, 158, 11, 0.6)" : undefined,
-                  }}
-                ></div>
-                <span>
-                  {backendStatus === "online"
-                    ? "ONLINE"
-                    : backendStatus === "offline"
-                    ? "OFFLINE"
-                    : "CHECKING..."}
-                </span>
-              </div>
-            </div>
-
-            {/* Secure Route Verification Status Card */}
-            <div className="status-card" style={{ margin: 0, width: "100%", maxWidth: "none", borderLeft: "2px solid var(--color-purple)" }}>
-              <div className="status-info">
-                <span className="status-title">Express Secure Endpoint Bridge</span>
-                <p className="status-description">
-                  {secureStatus === "authorized" && secureData
-                    ? `Authenticated! User: ${secureData.email}. Saved Snippets in PostgreSQL: ${secureData.snippetCount}`
-                    : secureStatus === "unauthorized"
-                    ? "Verify token bridge: Sign in above to query secured Express endpoints."
-                    : secureStatus === "checking"
-                    ? "Exchanging Clerk session token with backend..."
-                    : "Secure endpoint offline or disconnected."}
-                </p>
-              </div>
-              <div className="status-indicator">
-                <div
-                  className={`status-dot ${
-                    secureStatus === "authorized"
-                      ? "status-online"
-                      : secureStatus === "unauthorized"
-                      ? "status-offline"
-                      : ""
-                  }`}
-                  style={{
-                    backgroundColor:
-                      secureStatus === "checking" ? "var(--color-warning)" : 
-                      secureStatus === "unauthorized" ? "var(--text-muted)" : undefined,
-                    boxShadow:
-                      secureStatus === "checking" ? "0 0 10px rgba(245, 158, 11, 0.6)" : 
-                      secureStatus === "unauthorized" ? "none" : undefined,
-                  }}
-                ></div>
-                <span style={{ color: secureStatus === "authorized" ? "var(--color-success)" : "inherit" }}>
-                  {secureStatus === "authorized"
-                    ? "SECURE BRIDGE"
-                    : secureStatus === "unauthorized"
-                    ? "LOCKED"
-                    : secureStatus === "checking"
-                    ? "VERIFYING..."
-                    : "OFFLINE"}
-                </span>
-              </div>
-            </div>
-
-          </div>
-        </section>
-
-        {/* Database Storage Live Dashboard Section */}
-        <section id="database" className="snippets-section">
-          <h2 className="section-title">Secure Code Cloud (PostgreSQL Storage)</h2>
-
-          {isSignedIn ? (
-            <div className="snippets-grid">
-              
-              {/* Left Column: Create Snippet Form */}
-              <div className="snippets-card">
-                <h3 className="snippets-card-title">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                    <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4z" />
+              <>
+                <Link href="/sign-in" className="hero-cta-primary">
+                  Get Started Free
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
                   </svg>
-                  Save New Snippet
-                </h3>
-                <form onSubmit={handleSaveSnippet} className="snippet-form">
-                  <div className="form-group">
-                    <label className="form-label">Snippet Title</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      placeholder="e.g. Fetch API Helper"
-                      value={newTitle}
-                      onChange={(e) => setNewTitle(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Code Block</label>
-                    <textarea
-                      className="form-textarea"
-                      placeholder="export const fetchUsers = () => { ... }"
-                      value={newCode}
-                      onChange={(e) => setNewCode(e.target.value)}
-                      required
-                    ></textarea>
-                  </div>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={isSaving}
-                    style={{ width: "100%" }}
-                  >
-                    {isSaving ? "Saving to Postgres..." : "Save to Neon Postgres"}
-                  </button>
-                </form>
-              </div>
-
-              {/* Right Column: Snippets List */}
-              <div className="snippets-card" style={{ borderLeft: "2px solid var(--color-cyan)" }}>
-                <h3 className="snippets-card-title">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                  </svg>
-                  Your Cloud Snippets
-                </h3>
-
-                {loadingSnippets && snippets.length === 0 ? (
-                  <div style={{ color: "var(--text-secondary)", fontStyle: "italic" }}>
-                    Loading snippets from Neon Database...
-                  </div>
-                ) : snippets.length === 0 ? (
-                  <div style={{ color: "var(--text-secondary)", fontStyle: "italic", padding: "2rem 0" }}>
-                    No snippets saved yet. Submit the form on the left to save code into Neon PostgreSQL.
-                  </div>
-                ) : (
-                  <div className="snippet-list">
-                    {snippets.map((snip) => (
-                      <div key={snip.id} className="snippet-item">
-                        <div className="snippet-item-header">
-                          <span className="snippet-item-title">{snip.title}</span>
-                          <span className="snippet-item-date">
-                            {new Date(snip.createdAt).toLocaleString(undefined, {
-                              dateStyle: "short",
-                              timeStyle: "short"
-                            })}
-                          </span>
-                        </div>
-                        <pre className="snippet-item-code">
-                          <code>{snip.code}</code>
-                        </pre>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-            </div>
+                </Link>
+                <Link href="/sign-in" className="hero-cta-secondary">Sign in</Link>
+              </>
+            )
           ) : (
-            <div className="locked-overlay">
-              <svg
-                width="36"
-                height="36"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{ color: "var(--color-purple)" }}
-              >
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-              <h3 style={{ fontSize: "1.25rem", color: "#fff" }}>PostgreSQL Code Vault Locked</h3>
-              <p style={{ color: "var(--text-secondary)", maxWidth: "450px", fontSize: "0.95rem" }}>
-                You must sign in with Clerk to access database storage. Once logged in, you can save, update, and manage code snippets synced securely in Neon Postgres.
-              </p>
-              <Link href="/sign-in" className="btn btn-primary" style={{ marginTop: "0.5rem" }}>
-                Sign In to Unlock
-              </Link>
-            </div>
+            <div style={{ height: 44, width: 180, borderRadius: 8, background: "#1a1a1a", animation: "shimmer 1.5s infinite" }} />
           )}
-        </section>
+        </motion.div>
 
-        {/* Feature Cards Grid */}
-        <section id="features" className="features-section">
-          <h2 className="section-title">Designed for Visual & Speed Excellence</h2>
-          <div className="features-grid">
-            <div className="feature-card">
-              <div className="feature-icon-wrapper">
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                </svg>
-              </div>
-              <h3 className="feature-title">Microsecond Bootup</h3>
-              <p className="feature-desc">
-                Optimized workspace configurations allow both the Next.js client and Express server to boot concurrently in less than a second.
-              </p>
+        {/* Stats row */}
+        <motion.div
+          className="hero-stats"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6, delay: 0.4 }}
+        >
+          {[
+            { val: "5+", label: "AI Models" },
+            { val: "Live", label: "Code Preview" },
+            { val: "1-click", label: "Revert" },
+            { val: "Cloud", label: "Workspace" },
+          ].map((s) => (
+            <div key={s.label} className="hero-stat">
+              <span className="hero-stat-val">{s.val}</span>
+              <span className="hero-stat-label">{s.label}</span>
             </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper">
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
-                  <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-                  <line x1="6" y1="6" x2="6.01" y2="6" />
-                  <line x1="6" y1="18" x2="6.01" y2="18" />
-                </svg>
-              </div>
-              <h3 className="feature-title">Independent Deployments</h3>
-              <p className="feature-desc">
-                Separate directory configuration enables direct deployment of the frontend to Vercel and the backend to Render, Railway, or VPS.
-              </p>
-            </div>
-
-            <div className="feature-card">
-              <div className="feature-icon-wrapper">
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M 12 22 C 17.523 22 22 17.523 22 12 S 17.523 2 12 2 S 2 6.477 2 12 s 4.477 10 10 10 z" />
-                  <path d="M 12 16 v -4" />
-                  <path d="M 12 8 h 0.01" />
-                </svg>
-              </div>
-              <h3 className="feature-title">Secure Authentication Bridge</h3>
-              <p className="feature-desc">
-                Authentication state is managed by Clerk and securely forwarded to Express routes using custom bearer tokens verified on the fly.
-              </p>
-            </div>
-          </div>
-        </section>
+          ))}
+        </motion.div>
       </main>
 
-      {/* Premium Footer */}
-      <footer className="footer">
-        <p>&copy; {new Date().getFullYear()} AuraEdit AI. All rights reserved.</p>
-        <p style={{ marginTop: "0.5rem", fontSize: "0.75rem", color: "var(--text-muted)" }}>
-          Powered by Next.js & Node.js Express. Secured by Clerk. Connected to Neon Postgres.
-        </p>
+      {/* ── Typewriter Demo ──────────────────────────────── */}
+      <section className="demo-section">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <div className="section-eyebrow">See it in action</div>
+          <h2 className="section-title">Watch the AI work</h2>
+          <p className="section-sub">Ask a question. Watch the AI read your files, think, and apply changes — all in real time.</p>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 40, scale: 0.98 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.7, delay: 0.1 }}
+        >
+          <TypewriterDemo />
+        </motion.div>
+      </section>
+
+      {/* ── Feature Cards ────────────────────────────────── */}
+      <section className="features-section">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="section-eyebrow">Features</div>
+          <h2 className="section-title">Everything you need to build faster</h2>
+        </motion.div>
+
+        <div className="features-grid">
+          {FEATURES.map((f, i) => (
+            <motion.div
+              key={f.title}
+              className="feature-card"
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4, delay: i * 0.07 }}
+            >
+              <div className="feature-icon" style={{ color: f.accent, background: `${f.accent}14`, border: `1px solid ${f.accent}28` }}>
+                {f.icon}
+              </div>
+              <h3 className="feature-title">{f.title}</h3>
+              <p className="feature-desc">{f.desc}</p>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── How it works ─────────────────────────────────── */}
+      <section className="steps-section">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="section-eyebrow">How it works</div>
+          <h2 className="section-title">Up and running in seconds</h2>
+        </motion.div>
+
+        <div className="steps-grid">
+          {STEPS.map((s, i) => (
+            <motion.div
+              key={s.num}
+              className="step-card"
+              initial={{ opacity: 0, x: -20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.45, delay: i * 0.1 }}
+            >
+              <div className="step-num">{s.num}</div>
+              <div>
+                <h3 className="step-title">{s.title}</h3>
+                <p className="step-desc">{s.desc}</p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Tech Stack ───────────────────────────────────── */}
+      <section className="stack-section">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="section-eyebrow">Built with</div>
+          <div className="stack-badges">
+            {TECH_STACK.map((tech) => (
+              <span key={tech} className="stack-badge">{tech}</span>
+            ))}
+          </div>
+        </motion.div>
+      </section>
+
+      {/* ── CTA Banner ───────────────────────────────────── */}
+      <section className="cta-section">
+        <motion.div
+          className="cta-card"
+          initial={{ opacity: 0, scale: 0.97 }}
+          whileInView={{ opacity: 1, scale: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+        >
+          <h2 className="cta-title">Ready to build something?</h2>
+          <p className="cta-sub">Upload your project folder and start chatting with the AI in under 30 seconds.</p>
+          {isLoaded && (
+            isSignedIn ? (
+              <Link href="/editor" className="hero-cta-primary">
+                Open Editor →
+              </Link>
+            ) : (
+              <Link href="/sign-in" className="hero-cta-primary">
+                Get Started Free →
+              </Link>
+            )
+          )}
+        </motion.div>
+      </section>
+
+      {/* Footer */}
+      <footer className="home-footer">
+        <div className="footer-logo">
+          <div className="logo-icon" style={{ width: 28, height: 28, fontSize: "0.7rem" }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
+            </svg>
+          </div>
+          AuraEdit AI
+        </div>
+        <div className="footer-links">
+          <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+            © {new Date().getFullYear()} AuraEdit · Built with Next.js, Express &amp; Gemini
+          </span>
+        </div>
       </footer>
     </div>
   );
