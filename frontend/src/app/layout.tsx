@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Forge — Craft Next.js apps with AI",
-  description: "An AI editor built for Next.js. Describe what you want and Forge writes the routes, components, and styles — running live in your browser.",
+  title: "Forge · Craft Next.js apps with AI",
+  description: "An AI editor built for Next.js. Describe what you want and Forge writes the routes, components, and styles, then runs them live in your browser.",
 };
 
 export default function RootLayout({

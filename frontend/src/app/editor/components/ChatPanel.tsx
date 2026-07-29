@@ -124,7 +124,7 @@ export function ChatPanel({
                 <optgroup key={group.group} label={group.group} style={{ background: "var(--bg-card)", color: "var(--text-muted)" }}>
                   {group.models.map((m) => (
                     <option key={m.value} value={m.value}>
-                      {m.label} — {m.badge}
+                      {m.label} ({m.badge})
                     </option>
                   ))}
                 </optgroup>

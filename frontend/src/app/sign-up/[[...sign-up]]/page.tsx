@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SignUp } from "@clerk/nextjs";
+import { PolishAuthInputs } from "../../PolishAuthInputs";
 
 export default function SignUpPage() {
   return (
@@ -15,6 +16,7 @@ export default function SignUpPage() {
           Forge
         </Link>
         <SignUp />
+        <PolishAuthInputs />
       </div>
     </div>
   );

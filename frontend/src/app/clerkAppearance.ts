@@ -30,4 +30,19 @@ export const clerkAppearance = {
     fontFamily: "var(--font-geist-sans), system-ui, sans-serif",
     fontSize: "0.9rem",
   },
+  elements: {
+    // The "Last used" pill renders near-black on the dark card by default.
+    // Styling it through the elements API rather than a `.cl-*` selector, since
+    // Clerk emits an unstable generated class name for it.
+    badge: {
+      backgroundColor: "#3a3a3a",
+      color: "#ffffff",
+      border: "1px solid #555555",
+      fontWeight: 500,
+      opacity: 1,
+    },
+    socialButtonsProviderInitialIcon: {
+      color: "#ffffff",
+    },
+  },
 };

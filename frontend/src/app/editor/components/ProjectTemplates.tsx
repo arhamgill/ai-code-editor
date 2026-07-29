@@ -243,7 +243,7 @@ export default function Home() {
         <h1 className="text-5xl font-bold tracking-tight">Build something great</h1>
         <p className="max-w-md text-white/60">
           A multi-page Next.js starter. Ask the AI to add routes, components, and
-          features — it all hot-reloads in the preview.
+          features. It all hot-reloads in the preview.
         </p>
         <Counter />
       </section>
