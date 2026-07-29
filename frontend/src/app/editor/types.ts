@@ -30,6 +30,14 @@ export interface ChatMessage {
   reaction?: "up" | "down";
 }
 
+export interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: ChatMessage[];
+}
+
 export interface ToastItem {
   id: number;
   message: string;

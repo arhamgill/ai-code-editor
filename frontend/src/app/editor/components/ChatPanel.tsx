@@ -1,9 +1,21 @@
 "use client";
 
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChatMessage } from "../types";
+import { ChatMessage, ChatSession } from "../types";
 import { MessageContent } from "./MessageContent";
+
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
 const MODEL_OPTIONS = [
   {
@@ -31,7 +43,11 @@ interface ChatPanelProps {
   activeFilePath: string | null;
   selectedModel: string;
   setSelectedModel: (v: string) => void;
-  handleClearChat: () => void;
+  chatSessions: ChatSession[];
+  activeChatId: string | null;
+  onNewChat: () => void;
+  onSwitchChat: (id: string) => void;
+  onDeleteChat: (id: string) => void;
   checkpoints: Record<number, Record<string, string>>;
   restoreCheckpoint: (msgIndex: number) => Promise<void>;
   fileSnapshotsBefore: Record<string, string>;
@@ -57,7 +73,11 @@ export function ChatPanel({
   activeFilePath,
   selectedModel,
   setSelectedModel,
-  handleClearChat,
+  chatSessions,
+  activeChatId,
+  onNewChat,
+  onSwitchChat,
+  onDeleteChat,
   checkpoints,
   restoreCheckpoint,
   fileSnapshotsBefore,
@@ -70,6 +90,27 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
+  const [showSessions, setShowSessions] = useState(false);
+
+  // Close the history popover on outside click / Escape
+  useEffect(() => {
+    if (!showSessions) return;
+    const onDown = (e: MouseEvent) => {
+      if (historyRef.current && !historyRef.current.contains(e.target as Node)) {
+        setShowSessions(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowSessions(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [showSessions]);
 
   // Auto scroll to bottom on new messages
   React.useEffect(() => {
@@ -131,12 +172,84 @@ export function ChatPanel({
               ))}
             </select>
 
-            <button className="sidebar-action-btn" onClick={handleClearChat} title="Clear Chat History" style={{ padding: "0.3rem" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            {/* New chat */}
+            <button
+              className="sidebar-action-btn"
+              onClick={onNewChat}
+              disabled={streamingActive}
+              title="New chat"
+              style={{ padding: "0.3rem" }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
             </button>
+
+            {/* Chat history */}
+            <div className="chat-history-wrap" ref={historyRef}>
+              <button
+                className={`sidebar-action-btn ${showSessions ? "active" : ""}`}
+                onClick={() => setShowSessions((p) => !p)}
+                title="Chat history"
+                aria-haspopup="true"
+                aria-expanded={showSessions}
+                style={{ padding: "0.3rem" }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="9" />
+                  <polyline points="12 7 12 12 15.5 14" />
+                </svg>
+              </button>
+
+              <AnimatePresence>
+                {showSessions && (
+                  <motion.div
+                    className="chat-history-popover"
+                    initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                    transition={{ duration: 0.14 }}
+                  >
+                    <div className="popover-title">Chats</div>
+
+                    {chatSessions.length === 0 ? (
+                      <div className="chat-history-empty">No chats yet</div>
+                    ) : (
+                      <div className="chat-history-list">
+                        {chatSessions.map((s) => (
+                          <div
+                            key={s.id}
+                            className={`chat-history-item ${s.id === activeChatId ? "active" : ""}`}
+                            onClick={() => { onSwitchChat(s.id); setShowSessions(false); }}
+                          >
+                            <div className="chat-history-meta">
+                              <span className="chat-history-title">{s.title}</span>
+                              <span className="chat-history-time">
+                                {relativeTime(s.updatedAt)}
+                                {s.messages.length > 0 && ` · ${s.messages.length} msg`}
+                              </span>
+                            </div>
+                            <button
+                              className="chat-history-delete"
+                              onClick={(e) => { e.stopPropagation(); onDeleteChat(s.id); }}
+                              title="Delete chat"
+                              aria-label={`Delete ${s.title}`}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
             <button className="sidebar-action-btn" onClick={() => setShowChat(false)} title="Close chat" style={{ padding: "0.3rem" }}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <line x1="18" y1="6" x2="6" y2="18" />

@@ -7,7 +7,7 @@ import { useAuth, useUser, UserButton } from "@clerk/nextjs";
 import Editor from "@monaco-editor/react";
 import { motion, AnimatePresence } from "framer-motion";
 
-import { Project, FileNode, ChatMessage, ToastItem, DiffModalState, CommandAction } from "./types";
+import { Project, FileNode, ChatMessage, ChatSession, ToastItem, DiffModalState, CommandAction } from "./types";
 import { detectLanguage } from "./utils/languageDetector";
 import { getFileIcon } from "./utils/fileIcons";
 import { formatFriendlyErrorMessage } from "./utils/formatters";
@@ -43,6 +43,37 @@ function filterFileTree(nodes: FileNode[], query: string): FileNode[] {
       return node.name.toLowerCase().includes(lq) ? node : null;
     })
     .filter(Boolean) as FileNode[];
+}
+
+// ─────────────────────────────────────────────────────────────
+// Chat session helpers
+// ─────────────────────────────────────────────────────────────
+const UNTITLED_CHAT = "New chat";
+
+const chatsKey = (projectId: string) => `forge_chats_${projectId}`;
+const activeChatKey = (projectId: string) => `forge_active_chat_${projectId}`;
+
+function newChatId() {
+  return `chat_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Title a session from its first user message. */
+function deriveChatTitle(messages: ChatMessage[]): string {
+  const first = messages.find((m) => m.role === "user" && m.content?.trim());
+  if (!first) return UNTITLED_CHAT;
+  const text = first.content.trim().replace(/\s+/g, " ");
+  return text.length > 44 ? `${text.slice(0, 44)}…` : text;
+}
+
+function makeSession(messages: ChatMessage[] = []): ChatSession {
+  const now = Date.now();
+  return {
+    id: newChatId(),
+    title: messages.length ? deriveChatTitle(messages) : UNTITLED_CHAT,
+    createdAt: now,
+    updatedAt: now,
+    messages,
+  };
 }
 
 function EditorContent() {
@@ -106,6 +137,8 @@ function EditorContent() {
   // ── Chat ─────────────────────────────────────────────────
   const [chatInput, setChatInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [streamingActive, setStreamingActive] = useState(false);
   const [attachedFile, setAttachedFile] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState("llama-3.3-70b-versatile");
@@ -570,10 +603,73 @@ function EditorContent() {
     if (activeFilePath) setAttachedFile(activeFilePath);
   }, [activeFilePath]);
 
-  const handleClearChat = useCallback(() => {
-    if (activeProject) localStorage.removeItem(`forge_chat_${activeProject.id}`);
-    setMessages([]);
+  // Reset the per-conversation scratch state (checkpoints are in-memory only)
+  const resetConversationScratch = useCallback(() => {
+    setCheckpoints({});
+    setFileSnapshotsBefore({});
+    setPendingAIChanges(null);
+    setAttachedFile(null);
+  }, []);
+
+  const persistSessions = useCallback((sessions: ChatSession[]) => {
+    if (!activeProject) return;
+    try {
+      localStorage.setItem(chatsKey(activeProject.id), JSON.stringify(sessions));
+    } catch (_) {}
   }, [activeProject]);
+
+  const handleNewChat = useCallback(() => {
+    if (!activeProject || streamingActive) return;
+    setChatSessions((prev) => {
+      // Don't stack up empty chats — reuse one if the current is untouched
+      const existingEmpty = prev.find((s) => s.messages.length === 0);
+      if (existingEmpty) {
+        setActiveChatId(existingEmpty.id);
+        return prev;
+      }
+      const session = makeSession();
+      const next = [session, ...prev];
+      setActiveChatId(session.id);
+      persistSessions(next);
+      return next;
+    });
+    setMessages([]);
+    resetConversationScratch();
+  }, [activeProject, streamingActive, persistSessions, resetConversationScratch]);
+
+  const handleSwitchChat = useCallback((id: string) => {
+    if (streamingActive || id === activeChatId) return;
+    const session = chatSessions.find((s) => s.id === id);
+    if (!session) return;
+    setActiveChatId(id);
+    setMessages(session.messages);
+    resetConversationScratch();
+  }, [streamingActive, activeChatId, chatSessions, resetConversationScratch]);
+
+  const handleDeleteChat = useCallback(async (id: string) => {
+    const session = chatSessions.find((s) => s.id === id);
+    if (!session) return;
+    if (session.messages.length > 0) {
+      const ok = await askConfirm({
+        title: "Delete chat?",
+        message: `"${session.title}" will be permanently removed.`,
+        confirmLabel: "Delete",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+
+    const remaining = chatSessions.filter((s) => s.id !== id);
+    setChatSessions(remaining);
+    persistSessions(remaining);
+
+    if (id === activeChatId) {
+      const nextActive = remaining[0] ?? null;
+      setActiveChatId(nextActive?.id ?? null);
+      setMessages(nextActive?.messages ?? []);
+      resetConversationScratch();
+    }
+  }, [chatSessions, activeChatId, askConfirm, persistSessions, resetConversationScratch]);
 
   const handleViewDiff = useCallback((filePath: string) => {
     const before = fileSnapshotsBefore[filePath] ?? "";
@@ -587,6 +683,17 @@ function EditorContent() {
 
     const userPromptText = chatInput.trim();
     const userPrompt = attachedFile ? `[Context File: ${attachedFile}]\n${userPromptText}` : userPromptText;
+
+    // First message in a fresh project: open a session to hold this conversation
+    if (!activeChatId) {
+      const session = makeSession();
+      setChatSessions((prev) => {
+        const next = [session, ...prev];
+        persistSessions(next);
+        return next;
+      });
+      setActiveChatId(session.id);
+    }
 
     setChatInput("");
     setAttachedFile(null);
@@ -775,7 +882,7 @@ function EditorContent() {
       abortControllerRef.current = null;
       setStreamingActive(false);
     }
-  }, [chatInput, streamingActive, activeProject, attachedFile, messages, tabContents, selectedModel, getToken, API, fetchFileTree, openTabs, closeTab, activeFilePath]);
+  }, [chatInput, streamingActive, activeProject, attachedFile, messages, tabContents, selectedModel, getToken, API, fetchFileTree, openTabs, closeTab, activeFilePath, activeChatId, persistSessions]);
 
   const stopStreaming = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -929,7 +1036,7 @@ function EditorContent() {
     { id: "toggle-preview", label: "Toggle Preview", icon: "▶", description: "Show or hide the live preview panel", section: "actions", action: () => setShowPreview((p) => !p) },
     { id: "toggle-sidebar", label: "Toggle Sidebar", icon: "◀", section: "actions", action: () => setSidebarCollapsed((p) => !p) },
     { id: "save-file", label: "Save File", icon: "💾", description: "Save the currently active file", section: "actions", action: saveFile },
-    { id: "clear-chat", label: "Clear Chat History", icon: "🗑️", section: "actions", action: handleClearChat },
+    { id: "new-chat", label: "New Chat", icon: "＋", description: "Start a fresh AI conversation", section: "actions", action: handleNewChat },
     { id: "history", label: "View AI History", icon: "🕐", description: "See all AI file changes", section: "actions", action: () => setShowHistory(true) },
     { id: "close-project", label: "Close Project", icon: "✕", section: "actions", action: closeWorkspace },
     { id: "word-wrap", label: "Toggle Word Wrap", icon: "↵", section: "actions", action: () => setWordWrap((p) => (p === "on" ? "off" : "on")) },
@@ -945,22 +1052,72 @@ function EditorContent() {
     else { closeWorkspace(); setProjects([]); }
   }, [isSignedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Restore chat history per project
+  // ── Chat sessions ────────────────────────────────────────
+  // Load all sessions for the project, migrating the old single-chat key.
   useEffect(() => {
-    if (activeProject) {
-      try {
-        const saved = localStorage.getItem(`forge_chat_${activeProject.id}`);
-        setMessages(saved ? JSON.parse(saved) : []);
-      } catch (_) { setMessages([]); }
+    if (!activeProject) return;
+    try {
+      const raw = localStorage.getItem(chatsKey(activeProject.id));
+      let sessions: ChatSession[] = raw ? JSON.parse(raw) : [];
+
+      if (!raw) {
+        // Migrate legacy `forge_chat_<id>` (a single message array) into a session
+        const legacy = localStorage.getItem(`forge_chat_${activeProject.id}`);
+        if (legacy) {
+          const msgs: ChatMessage[] = JSON.parse(legacy);
+          if (Array.isArray(msgs) && msgs.length > 0) {
+            sessions = [makeSession(msgs)];
+          }
+          localStorage.removeItem(`forge_chat_${activeProject.id}`);
+        }
+      }
+
+      const storedActive = localStorage.getItem(activeChatKey(activeProject.id));
+      const active = sessions.find((s) => s.id === storedActive) ?? sessions[0] ?? null;
+
+      setChatSessions(sessions);
+      setActiveChatId(active?.id ?? null);
+      setMessages(active?.messages ?? []);
+      setCheckpoints({});
+      setFileSnapshotsBefore({});
+      setPendingAIChanges(null);
+    } catch (_) {
+      setChatSessions([]);
+      setActiveChatId(null);
+      setMessages([]);
     }
   }, [activeProject]);
 
-  // Persist chat history
+  // Mirror the working message list into the active session and persist.
+  // Writing is skipped mid-stream so we aren't serialising every token.
   useEffect(() => {
-    if (activeProject && messages.length > 0) {
-      localStorage.setItem(`forge_chat_${activeProject.id}`, JSON.stringify(messages));
+    if (!activeProject || !activeChatId) return;
+    setChatSessions((prev) => {
+      const next = prev.map((s) =>
+        s.id === activeChatId
+          ? {
+              ...s,
+              messages,
+              updatedAt: Date.now(),
+              title: s.title === UNTITLED_CHAT ? deriveChatTitle(messages) : s.title,
+            }
+          : s
+      );
+      if (!streamingActive) {
+        try {
+          localStorage.setItem(chatsKey(activeProject.id), JSON.stringify(next));
+        } catch (_) {}
+      }
+      return next;
+    });
+  }, [messages, streamingActive, activeProject, activeChatId]);
+
+  // Remember which session was open
+  useEffect(() => {
+    if (activeProject && activeChatId) {
+      localStorage.setItem(activeChatKey(activeProject.id), activeChatId);
     }
-  }, [messages, activeProject]);
+  }, [activeProject, activeChatId]);
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -1438,7 +1595,11 @@ function EditorContent() {
             activeFilePath={activeFilePath}
             selectedModel={selectedModel}
             setSelectedModel={setSelectedModel}
-            handleClearChat={handleClearChat}
+            chatSessions={chatSessions}
+            activeChatId={activeChatId}
+            onNewChat={handleNewChat}
+            onSwitchChat={handleSwitchChat}
+            onDeleteChat={handleDeleteChat}
             checkpoints={checkpoints}
             restoreCheckpoint={restoreCheckpoint}
             fileSnapshotsBefore={fileSnapshotsBefore}

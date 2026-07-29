@@ -2762,11 +2762,17 @@ html, body {
 }
 
 /* ── Badges, alerts, errors ───────────────────────────────── */
-/* "Last used" pill. The real fix lives in `appearance.elements.badge`; these
-   selectors are a narrow backstop only. Deliberately NOT matching generic
-   inner spans of social buttons, which painted a box around their labels. */
+/* "Last used" pill. Clerk's generated class contains "badge" but is not exactly
+   `cl-badge`, so match on the substring — scoped to the Clerk card so nothing
+   else in the app is affected.
+   NOTE: do NOT add a `.cl-socialButtonsBlockButton > span:last-child` rule here.
+   That matches the button's own label span and paints a box around
+   "Continue with Google/GitHub". */
 .cl-badge,
-[class*="cl-badge"] {
+[class*="cl-badge"],
+.cl-rootBox [class*="badge" i],
+.cl-card [class*="badge" i],
+.cl-cardBox [class*="badge" i] {
   background-color: #3a3a3a !important;
   background-image: none !important;
   color: #ffffff !important;
@@ -3337,4 +3343,233 @@ input:-internal-autofill-previewed {
 .chat-suggestion:hover svg {
   opacity: 1;
   transform: translateX(0);
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Clerk UserProfile / "Manage account" modal.
+ * Clerk paints a lot of this panel's text near-black on the dark card
+ * (nav title, device metadata, section subtitles). Force a legible baseline,
+ * then re-assert headings, danger and badges so hierarchy survives.
+ * ───────────────────────────────────────────────────────────── */
+
+.cl-modalContent,
+.cl-userProfile-root,
+.cl-userProfile-root .cl-navbar,
+.cl-organizationProfile-root {
+  background-color: var(--clerk-surface) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Baseline: any text node inside the profile modal */
+.cl-userProfile-root p,
+.cl-userProfile-root span,
+.cl-userProfile-root div,
+.cl-userProfile-root a,
+.cl-modalContent p,
+.cl-modalContent span,
+.cl-modalContent div {
+  color: var(--text-secondary) !important;
+}
+
+/* Headings and primary values stay bright */
+.cl-userProfile-root h1,
+.cl-userProfile-root h2,
+.cl-userProfile-root h3,
+.cl-modalContent h1,
+.cl-modalContent h2,
+.cl-modalContent h3,
+.cl-navbarTitle,
+.cl-headerTitle,
+.cl-profileSectionTitleText,
+.cl-profileSectionTitle,
+.cl-userPreviewMainIdentifier,
+.cl-activeDeviceListItem__title {
+  color: #ffffff !important;
+}
+
+/* Left nav */
+.cl-navbar {
+  border-right: 1px solid var(--clerk-border) !important;
+}
+
+.cl-navbarButton {
+  color: var(--text-secondary) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+.cl-navbarButton:hover {
+  background-color: var(--clerk-hover) !important;
+  color: #ffffff !important;
+}
+
+.cl-navbarButton[data-active="true"],
+.cl-navbarButton__active,
+.cl-navbarButtonActive {
+  background-color: var(--clerk-hover) !important;
+  color: #ffffff !important;
+}
+
+/* Section rows / dividers */
+.cl-profileSection,
+.cl-profileSectionContent,
+.cl-accordionTriggerButton {
+  border-color: var(--clerk-border) !important;
+}
+
+/* Clickable actions inside the profile (Set password, Add email, …) */
+.cl-profileSectionPrimaryButton,
+.cl-accordionTriggerButton,
+.cl-userProfile-root button:not(.cl-formButtonPrimary):not([class*="danger" i]) {
+  color: #ffffff !important;
+}
+
+.cl-profileSectionPrimaryButton:hover,
+.cl-accordionTriggerButton:hover {
+  background-color: var(--clerk-hover) !important;
+}
+
+/* Device icon renders as a solid black block; lift it out of the background */
+.cl-activeDeviceIcon,
+.cl-activeDeviceIcon svg,
+.cl-activeDeviceListItem svg {
+  color: var(--text-secondary) !important;
+  fill: currentColor !important;
+  opacity: 1 !important;
+}
+
+/* Modal close button */
+.cl-modalCloseButton {
+  color: var(--text-secondary) !important;
+}
+
+.cl-modalCloseButton:hover {
+  color: #ffffff !important;
+  background-color: var(--clerk-hover) !important;
+}
+
+/* Re-assert after the broad baseline above */
+.cl-userProfile-root [class*="badge" i],
+.cl-modalContent [class*="badge" i] {
+  color: #ffffff !important;
+  background-color: #3a3a3a !important;
+  border-color: #555555 !important;
+}
+
+.cl-userProfile-root [class*="danger" i],
+.cl-modalContent [class*="danger" i],
+.cl-userProfile-root button[class*="danger" i] span {
+  color: var(--color-error) !important;
+}
+
+/* ===================== */
+/* CHAT HISTORY POPOVER  */
+/* ===================== */
+
+.chat-history-wrap {
+  position: relative;
+}
+
+.chat-history-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 400;
+  width: 268px;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+  transform-origin: top right;
+}
+
+.chat-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  overflow-y: auto;
+}
+
+.chat-history-empty {
+  padding: 0.75rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-style: italic;
+  text-align: center;
+}
+
+.chat-history-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.chat-history-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.chat-history-item.active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.chat-history-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-history-title {
+  font-size: 0.79rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-history-item.active .chat-history-title {
+  color: #fff;
+  font-weight: 500;
+}
+
+.chat-history-time {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.chat-history-delete {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+.chat-history-item:hover .chat-history-delete { opacity: 1; }
+
+.chat-history-delete:hover {
+  color: var(--color-error);
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.sidebar-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }

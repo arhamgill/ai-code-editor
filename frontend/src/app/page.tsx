@@ -55,8 +55,8 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.08, ease }}
         >
-          Describe what you want. Forge writes the routes, components and styles,
-          then runs them live in your browser.
+          Start from a clean template, tell the AI what to build,
+          and preview your app right in the browser.
         </motion.p>
 
         <motion.div
