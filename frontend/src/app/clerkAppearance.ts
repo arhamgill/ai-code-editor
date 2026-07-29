@@ -1,58 +1,33 @@
-// Shared Clerk appearance — monochrome black/white to match the Forge theme.
+// Shared Clerk appearance — monochrome, matching the Forge theme.
 // Applied globally on <ClerkProvider> so every Clerk component (SignIn, SignUp,
 // UserButton, UserProfile, …) is styled consistently.
+//
+// IMPORTANT: Clerk derives hover/active shades from `colorPrimary`. With a pure
+// white primary those derived shades darken toward black, which made links and
+// text disappear against the dark card. We therefore keep the palette here and
+// pin every interactive state explicitly in globals.css (`.cl-*` rules), rather
+// than letting Clerk compute them.
 export const clerkAppearance = {
+  layout: {
+    socialButtonsVariant: "blockButton" as const,
+    shimmer: false,
+  },
   variables: {
+    // Surfaces are deliberately lifted off pure black so the card reads as a
+    // distinct panel and hover states have somewhere to go.
+    colorBackground: "#111111",
+    colorInputBackground: "#181818",
     colorPrimary: "#ffffff",
     colorTextOnPrimaryBackground: "#000000",
-    colorBackground: "#0a0a0a",
     colorText: "#ededed",
     colorTextSecondary: "#a1a1a1",
-    colorInputBackground: "#141414",
     colorInputText: "#ededed",
     colorDanger: "#f87171",
     colorSuccess: "#4ade80",
+    colorWarning: "#d4d4d4",
+    colorNeutral: "#ffffff",
     borderRadius: "8px",
     fontFamily: "var(--font-geist-sans), system-ui, sans-serif",
-  },
-  elements: {
-    card: { backgroundColor: "#0a0a0a", borderColor: "#262626", boxShadow: "none" },
-    headerTitle: { color: "#ffffff" },
-    headerSubtitle: { color: "#a1a1a1" },
-    socialButtonsBlockButton: {
-      backgroundColor: "#141414",
-      borderColor: "#262626",
-      color: "#ededed",
-    },
-    socialButtonsBlockButtonText: { color: "#ededed" },
-    dividerLine: { backgroundColor: "#262626" },
-    dividerText: { color: "#6b6b6b" },
-    formFieldLabel: { color: "#a1a1a1" },
-    formFieldInput: {
-      backgroundColor: "#141414",
-      borderColor: "#262626",
-      color: "#ededed",
-    },
-    formButtonPrimary: {
-      backgroundColor: "#ffffff",
-      color: "#000000",
-      fontWeight: "600",
-      textTransform: "none" as const,
-      boxShadow: "none",
-    },
-    formFieldAction: { color: "#ffffff" },
-    formFieldInputShowPasswordButton: { color: "#a1a1a1" },
-    footerActionText: { color: "#a1a1a1" },
-    footerActionLink: { color: "#ffffff" },
-    identityPreviewText: { color: "#ededed" },
-    identityPreviewEditButton: { color: "#ffffff" },
-    otpCodeFieldInput: { color: "#ededed", borderColor: "#262626" },
-    // UserButton popover
-    userButtonPopoverCard: { backgroundColor: "#0a0a0a", borderColor: "#262626" },
-    userButtonPopoverActionButton: { color: "#ededed" },
-    userButtonPopoverActionButtonText: { color: "#ededed" },
-    userButtonPopoverFooter: { display: "none" },
-    userPreviewMainIdentifier: { color: "#ededed" },
-    userPreviewSecondaryIdentifier: { color: "#a1a1a1" },
+    fontSize: "0.9rem",
   },
 };

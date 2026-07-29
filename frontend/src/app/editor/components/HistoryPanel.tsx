@@ -105,10 +105,10 @@ export function HistoryPanel({ show, onClose, messages, checkpoints, restoreChec
                                   style={{
                                     color:
                                       evt.action === "Created"
-                                        ? "#34d399"
+                                        ? "var(--color-success)"
                                         : evt.action === "Modified"
-                                        ? "#60a5fa"
-                                        : "#f87171",
+                                        ? "var(--text-primary)"
+                                        : "var(--color-error)",
                                     fontSize: "0.65rem",
                                     fontWeight: 700,
                                     textTransform: "uppercase",
@@ -133,10 +133,10 @@ export function HistoryPanel({ show, onClose, messages, checkpoints, restoreChec
                                   ((evt.added ?? 0) > 0 || (evt.removed ?? 0) > 0) && (
                                     <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.7rem" }}>
                                       {(evt.added ?? 0) > 0 && (
-                                        <span style={{ color: "#34d399" }}>+{evt.added}</span>
+                                        <span style={{ color: "var(--color-success)" }}>+{evt.added}</span>
                                       )}
                                       {(evt.removed ?? 0) > 0 && (
-                                        <span style={{ color: "#f87171" }}> -{evt.removed}</span>
+                                        <span style={{ color: "var(--color-error)" }}> -{evt.removed}</span>
                                       )}
                                     </span>
                                   )}

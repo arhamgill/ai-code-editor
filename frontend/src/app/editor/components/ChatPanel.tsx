@@ -9,10 +9,10 @@ const MODEL_OPTIONS = [
   {
     group: "Groq Models",
     models: [
-      { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", badge: "⭐ Best tool calling" },
-      { value: "openai/gpt-oss-120b", label: "GPT-OSS 120B", badge: "🧠 Reasoning + tools" },
-      { value: "openai/gpt-oss-20b", label: "GPT-OSS 20B", badge: "⚡ Very fast" },
-      { value: "llama-3.1-8b-instant", label: "Llama 3.1 8B", badge: "⚡ Instant" },
+      { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", badge: "best tool calling" },
+      { value: "openai/gpt-oss-120b", label: "GPT-OSS 120B", badge: "reasoning + tools" },
+      { value: "openai/gpt-oss-20b", label: "GPT-OSS 20B", badge: "very fast" },
+      { value: "llama-3.1-8b-instant", label: "Llama 3.1 8B", badge: "fastest" },
     ],
   },
 ];
@@ -105,7 +105,7 @@ export function ChatPanel({
         {/* Header */}
         <div className="chat-header">
           <div className="chat-title">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="2">
               <path d="M12 2L2 7l10 5 10-5-10-5z" />
               <path d="M2 17l10 5 10-5" />
               <path d="M2 12l10 5 10-5" />
@@ -121,7 +121,7 @@ export function ChatPanel({
               title="Select AI Model"
             >
               {MODEL_OPTIONS.map((group) => (
-                <optgroup key={group.group} label={group.group} style={{ background: "#111", color: "#aaa" }}>
+                <optgroup key={group.group} label={group.group} style={{ background: "var(--bg-card)", color: "var(--text-muted)" }}>
                   {group.models.map((m) => (
                     <option key={m.value} value={m.value}>
                       {m.label} — {m.badge}
@@ -150,24 +150,26 @@ export function ChatPanel({
         <div className="chat-messages">
           {messages.length === 0 ? (
             <div className="chat-empty-state">
-              <div style={{ fontSize: "2rem" }}>✨</div>
-              <h4 style={{ color: "#fff", fontWeight: 700, fontSize: "0.95rem" }}>Forge Helper</h4>
-              <p style={{ fontSize: "0.8rem", lineHeight: 1.45, color: "var(--text-muted)", textAlign: "center" }}>
-                Ask questions, request file changes, or ask for code explanations in this workspace project.
+              <h4 className="chat-empty-title">Build with AI</h4>
+              <p className="chat-empty-sub">
+                Ask for routes, components or styles. Forge edits your files directly.
               </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", width: "100%", marginTop: "1rem" }}>
+              <div className="chat-suggestions">
                 {[
-                  { icon: "➕", label: "Add an /about page", prompt: "Add an /about route with a link to it from the homepage." },
-                  { icon: "🎨", label: "Build a pricing section", prompt: "Add a responsive pricing section to the homepage using Tailwind." },
-                  { icon: "🧩", label: "Add a client component", prompt: "Create an interactive counter as a client component and use it on the homepage." },
+                  { label: "Add an /about page", prompt: "Add an /about route with a link to it from the homepage." },
+                  { label: "Build a pricing section", prompt: "Add a responsive pricing section to the homepage using Tailwind." },
+                  { label: "Add a client component", prompt: "Create an interactive counter as a client component and use it on the homepage." },
                 ].map((chip) => (
                   <button
                     key={chip.prompt}
-                    className="btn btn-secondary"
+                    className="chat-suggestion"
                     onClick={() => setChatInput(chip.prompt)}
-                    style={{ fontSize: "0.75rem", padding: "0.45rem", justifyContent: "flex-start", width: "100%" }}
                   >
-                    {chip.icon} {chip.label}
+                    <span>{chip.label}</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                      <polyline points="12 5 19 12 12 19" />
+                    </svg>
                   </button>
                 ))}
               </div>
@@ -267,8 +269,8 @@ export function ChatPanel({
                                 <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flexShrink: 0 }}>
                                   {evt.action !== "Deleted" && ((evt.added ?? 0) > 0 || (evt.removed ?? 0) > 0) && (
                                     <div style={{ display: "flex", gap: "0.25rem", fontFamily: "var(--font-mono)", fontSize: "0.75rem", fontWeight: "bold" }}>
-                                      {(evt.added ?? 0) > 0 && <span style={{ color: "#34d399" }}>+{evt.added}</span>}
-                                      {(evt.removed ?? 0) > 0 && <span style={{ color: "#f87171" }}>-{evt.removed}</span>}
+                                      {(evt.added ?? 0) > 0 && <span style={{ color: "var(--color-success)" }}>+{evt.added}</span>}
+                                      {(evt.removed ?? 0) > 0 && <span style={{ color: "var(--color-error)" }}>-{evt.removed}</span>}
                                     </div>
                                   )}
                                   {evt.action === "Modified" && evt.path && (

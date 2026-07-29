@@ -55,10 +55,10 @@ export function PendingChangesBanner({
                   style={{
                     color:
                       item.action === "Created"
-                        ? "#34d399"
+                        ? "var(--color-success)"
                         : item.action === "Modified"
-                        ? "#60a5fa"
-                        : "#f87171",
+                        ? "var(--text-primary)"
+                        : "var(--color-error)",
                     fontWeight: 700,
                     fontSize: "0.68rem",
                     textTransform: "uppercase",
@@ -69,8 +69,8 @@ export function PendingChangesBanner({
                 <span className="banner-file-name">{item.path.split("/").pop()}</span>
                 {item.action !== "Deleted" && ((item.added ?? 0) > 0 || (item.removed ?? 0) > 0) && (
                   <span className="banner-file-diff">
-                    {(item.added ?? 0) > 0 && <span style={{ color: "#34d399" }}>+{item.added}</span>}
-                    {(item.removed ?? 0) > 0 && <span style={{ color: "#f87171" }}> -{item.removed}</span>}
+                    {(item.added ?? 0) > 0 && <span style={{ color: "var(--color-success)" }}>+{item.added}</span>}
+                    {(item.removed ?? 0) > 0 && <span style={{ color: "var(--color-error)" }}> -{item.removed}</span>}
                   </span>
                 )}
               </div>

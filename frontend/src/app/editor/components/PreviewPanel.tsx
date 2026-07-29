@@ -173,12 +173,12 @@ export function PreviewPanel({
 
           {session.status === "error" && (
             <div className="preview-placeholder">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="1.5">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--color-error)" strokeWidth="1.5">
                 <circle cx="12" cy="12" r="10" />
                 <line x1="12" y1="8" x2="12" y2="12" />
                 <line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
-              <p style={{ color: "#f87171", fontSize: "0.82rem", textAlign: "center", maxWidth: "240px" }}>
+              <p style={{ color: "var(--color-error)", fontSize: "0.82rem", textAlign: "center", maxWidth: "240px" }}>
                 {session.errorMsg ?? "Preview failed"}
               </p>
               <button className="btn btn-secondary" onClick={handleRun} style={{ fontSize: "0.75rem", padding: "0.35rem 0.8rem" }}>

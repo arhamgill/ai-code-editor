@@ -23,6 +23,7 @@ import { WelcomeScreen } from "./components/WelcomeScreen";
 import { StatusBar } from "./components/StatusBar";
 import { ProjectTemplates } from "./components/ProjectTemplates";
 import { PendingChangesBanner, PendingChangeItem } from "./components/PendingChangesBanner";
+import { useDialog } from "./components/Dialog";
 
 // ─────────────────────────────────────────────────────────────
 // Helper: filter file tree by query string
@@ -87,6 +88,8 @@ function EditorContent() {
   const [wordWrap, setWordWrap] = useState<"on" | "off">("off");
   const [minimapOn, setMinimapOn] = useState(true);
   const [fontSize, setFontSize] = useState(14);
+  const [showSettings, setShowSettings] = useState(false);
+  const [selectionInfo, setSelectionInfo] = useState<{ chars: number; lines: number } | null>(null);
   const [editorMode, setEditorMode] = useState<"code" | "preview">("code");
   const [recentFiles, setRecentFiles] = useState<string[]>([]);
 
@@ -117,10 +120,14 @@ function EditorContent() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
 
   const addToast = useCallback((message: string, type: ToastItem["type"]) => {
     setToasts((prev) => [...prev, { id: Date.now(), message, type }]);
   }, []);
+
+  // Themed replacements for window.prompt / window.confirm
+  const { askText, askConfirm, dialog } = useDialog();
 
   // ─────────────────────────────────────────────────────────
   // Data Fetching
@@ -220,9 +227,17 @@ function EditorContent() {
     setTempContent(tabContents[newPath] ?? "");
   }, [activeFilePath, tempContent, tabContents, tabOriginalContents]);
 
-  const closeTab = useCallback((path: string, e?: React.MouseEvent) => {
+  const closeTab = useCallback(async (path: string, e?: React.MouseEvent, force = false) => {
     if (e) e.stopPropagation();
-    if (unsavedChanges[path] && !window.confirm(`"${path.split("/").pop()}" has unsaved changes. Close anyway?`)) return;
+    if (!force && unsavedChanges[path]) {
+      const ok = await askConfirm({
+        title: "Discard unsaved changes?",
+        message: `"${path.split("/").pop()}" has unsaved edits that will be lost.`,
+        confirmLabel: "Discard",
+        danger: true,
+      });
+      if (!ok) return;
+    }
 
     const nextTabs = openTabs.filter((t) => t !== path);
     setOpenTabs(nextTabs);
@@ -242,7 +257,7 @@ function EditorContent() {
         setTempContent("");
       }
     }
-  }, [openTabs, activeFilePath, unsavedChanges, tabContents, tabOriginalContents]);
+  }, [openTabs, activeFilePath, unsavedChanges, tabContents, tabOriginalContents, askConfirm]);
 
   const saveFile = useCallback(async () => {
     if (!activeProject || !activeFilePath || !unsavedChanges[activeFilePath]) return;
@@ -271,32 +286,61 @@ function EditorContent() {
 
   const handleNewFile = useCallback(async () => {
     if (!activeProject) return;
-    const name = prompt("Enter new file path (e.g. src/components/Card.tsx):");
-    if (!name?.trim()) return;
+    const name = await askText({
+      title: "New file",
+      message: "Path relative to the project root.",
+      placeholder: "app/about/page.tsx",
+      confirmLabel: "Create file",
+    });
+    if (!name) return;
     const token = await getToken();
     const res = await fetch(`${API}/api/projects/${activeProject.id}/write`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ path: name.trim(), content: "" }),
+      body: JSON.stringify({ path: name, content: "" }),
     });
-    if (res.ok) { await fetchFileTree(activeProject.id); await openFile(name.trim()); }
-  }, [activeProject, getToken, API, fetchFileTree, openFile]);
+    if (res.ok) {
+      await fetchFileTree(activeProject.id);
+      await openFile(name);
+      addToast(`Created ${name.split("/").pop()}`, "success");
+    } else {
+      addToast("Could not create file.", "error");
+    }
+  }, [activeProject, getToken, API, fetchFileTree, openFile, askText, addToast]);
 
   const handleNewFolder = useCallback(async () => {
     if (!activeProject) return;
-    const name = prompt("Enter new folder path:");
-    if (!name?.trim()) return;
+    const name = await askText({
+      title: "New folder",
+      message: "Path relative to the project root.",
+      placeholder: "components/ui",
+      confirmLabel: "Create folder",
+    });
+    if (!name) return;
     const token = await getToken();
     const res = await fetch(`${API}/api/projects/${activeProject.id}/mkdir`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ path: name.trim() }),
+      body: JSON.stringify({ path: name }),
     });
-    if (res.ok) await fetchFileTree(activeProject.id);
-  }, [activeProject, getToken, API, fetchFileTree]);
+    if (res.ok) {
+      await fetchFileTree(activeProject.id);
+      addToast(`Created ${name}`, "success");
+    } else {
+      addToast("Could not create folder.", "error");
+    }
+  }, [activeProject, getToken, API, fetchFileTree, askText, addToast]);
 
   const handleDeleteFile = useCallback(async (filePath: string, type: "file" | "directory") => {
-    if (!activeProject || !window.confirm(`Delete "${filePath}"?`)) return;
+    if (!activeProject) return;
+    const ok = await askConfirm({
+      title: `Delete ${type === "directory" ? "folder" : "file"}?`,
+      message: `"${filePath}" will be permanently removed.`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
+
     const token = await getToken();
     const res = await fetch(`${API}/api/projects/${activeProject.id}/file`, {
       method: "DELETE",
@@ -305,14 +349,17 @@ function EditorContent() {
     });
     if (res.ok) {
       if (type === "file" && openTabs.includes(filePath)) {
-        closeTab(filePath);
+        closeTab(filePath, undefined, true);
       } else if (type === "directory") {
         const prefix = filePath + "/";
-        openTabs.filter((t) => t.startsWith(prefix)).forEach((t) => closeTab(t));
+        openTabs.filter((t) => t.startsWith(prefix)).forEach((t) => closeTab(t, undefined, true));
       }
       await fetchFileTree(activeProject.id);
+      addToast(`Deleted ${filePath.split("/").pop()}`, "success");
+    } else {
+      addToast("Could not delete.", "error");
     }
-  }, [activeProject, getToken, API, openTabs, closeTab, fetchFileTree]);
+  }, [activeProject, getToken, API, openTabs, closeTab, fetchFileTree, askConfirm, addToast]);
 
   const handleRename = useCallback(async (oldPath: string, newName: string) => {
     if (!activeProject || !newName.trim()) return;
@@ -415,8 +462,17 @@ function EditorContent() {
   const handleFolderUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    const projectName = prompt("Enter a name for this workspace project:", "my-app");
-    if (!projectName?.trim()) return;
+    const projectName = await askText({
+      title: "Import project",
+      message: `${files.length} files selected. Name this workspace.`,
+      placeholder: "my-app",
+      defaultValue: "my-app",
+      confirmLabel: "Import",
+    });
+    if (!projectName) {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
     try {
       setUploading(true);
       const payloadFiles: Array<{ path: string; content: string }> = [];
@@ -446,11 +502,11 @@ function EditorContent() {
       const res = await fetch(`${API}/api/projects/upload`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name: projectName.trim(), files: payloadFiles }),
+        body: JSON.stringify({ name: projectName, files: payloadFiles }),
       });
       if (res.ok) {
         await fetchProjects();
-        addToast(`Imported "${projectName.trim()}"!`, "success");
+        addToast(`Imported "${projectName}"`, "success");
       } else {
         const d = await res.json().catch(() => ({}));
         addToast(d.message || "Import failed.", "error");
@@ -462,7 +518,7 @@ function EditorContent() {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [getToken, API, fetchProjects, addToast]);
+  }, [getToken, API, fetchProjects, addToast, askText]);
 
   const handleCreateTemplate = useCallback(async (name: string, files: Array<{ path: string; content: string }>) => {
     setCreatingTemplate(true);
@@ -485,7 +541,14 @@ function EditorContent() {
   }, [getToken, API, fetchProjects, addToast]);
 
   const deleteProject = useCallback(async (projectId: string, name: string) => {
-    if (!window.confirm(`Delete project "${name}"?`)) return;
+    const ok = await askConfirm({
+      title: "Delete project?",
+      message: `"${name}" and all of its files will be permanently deleted.`,
+      confirmLabel: "Delete project",
+      danger: true,
+    });
+    if (!ok) return;
+
     const token = await getToken();
     const res = await fetch(`${API}/api/projects/${projectId}`, {
       method: "DELETE",
@@ -494,8 +557,11 @@ function EditorContent() {
     if (res.ok) {
       if (activeProject?.id === projectId) closeWorkspace();
       await fetchProjects();
+      addToast(`Deleted "${name}"`, "success");
+    } else {
+      addToast("Could not delete project.", "error");
     }
-  }, [getToken, API, activeProject, closeWorkspace, fetchProjects]);
+  }, [getToken, API, activeProject, closeWorkspace, fetchProjects, askConfirm, addToast]);
 
   // ─────────────────────────────────────────────────────────
   // Chat / AI Agent
@@ -826,8 +892,31 @@ function EditorContent() {
   };
 
   const handleEditorDidMount = (editor: unknown) => {
-    (editor as { onDidChangeCursorPosition: (cb: (e: { position: { lineNumber: number; column: number } }) => void) => void })
-      .onDidChangeCursorPosition((e) => setCursorPosition({ line: e.position.lineNumber, column: e.position.column }));
+    const ed = editor as {
+      onDidChangeCursorPosition: (cb: (e: { position: { lineNumber: number; column: number } }) => void) => void;
+      onDidChangeCursorSelection: (cb: () => void) => void;
+      getSelection: () => { isEmpty: () => boolean; startLineNumber: number; endLineNumber: number } | null;
+      getModel: () => { getValueInRange: (r: unknown) => string } | null;
+    };
+
+    ed.onDidChangeCursorPosition((e) =>
+      setCursorPosition({ line: e.position.lineNumber, column: e.position.column })
+    );
+
+    // Live selection stats for the status bar
+    ed.onDidChangeCursorSelection(() => {
+      const sel = ed.getSelection();
+      const model = ed.getModel();
+      if (!sel || !model || sel.isEmpty()) {
+        setSelectionInfo(null);
+        return;
+      }
+      const text = model.getValueInRange(sel);
+      setSelectionInfo({
+        chars: text.length,
+        lines: sel.endLineNumber - sel.startLineNumber + 1,
+      });
+    });
   };
 
   // ─────────────────────────────────────────────────────────
@@ -936,12 +1025,25 @@ function EditorContent() {
         setShowShortcuts(false);
         setShowCommandPalette(false);
         setShowHistory(false);
+        setShowSettings(false);
         setDiffModal(null);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [saveFile]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Close the settings popover on outside click
+  useEffect(() => {
+    if (!showSettings) return;
+    const onDown = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setShowSettings(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [showSettings]);
 
   // Toggle folder
   const toggleFolder = useCallback((path: string) => {
@@ -1057,7 +1159,14 @@ function EditorContent() {
               {activeFilePath ? (
                 <>
                   {getFileIcon(activeFilePath.split("/").pop() ?? "", true).icon}
-                  <span>{activeFilePath}</span>
+                  <span className="file-path-crumb">
+                    {activeFilePath.includes("/") && (
+                      <span className="file-path-dir">
+                        {activeFilePath.slice(0, activeFilePath.lastIndexOf("/") + 1)}
+                      </span>
+                    )}
+                    <span className="file-path-name">{activeFilePath.split("/").pop()}</span>
+                  </span>
                   {unsavedChanges[activeFilePath] && <div className="save-indicator-dot" title="Unsaved changes" />}
                 </>
               ) : (
@@ -1073,42 +1182,103 @@ function EditorContent() {
               </div>
             )}
 
-            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-              {activeFilePath && !tabBinaryStatus[activeFilePath] && (
-                <>
-                  <button className="sidebar-action-btn" onClick={() => setWordWrap((p) => (p === "on" ? "off" : "on"))} title="Toggle Word Wrap" style={{ color: wordWrap === "on" ? "var(--text-bright)" : "inherit", fontSize: "0.75rem", padding: "0.2rem 0.4rem" }}>Wrap</button>
-                  <button className="sidebar-action-btn" onClick={() => setMinimapOn((p) => !p)} title="Toggle Minimap" style={{ color: minimapOn ? "var(--text-bright)" : "inherit", fontSize: "0.75rem", padding: "0.2rem 0.4rem" }}>Map</button>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.15rem", borderRight: "1px solid var(--border-color)", paddingRight: "0.5rem" }}>
-                    <button className="sidebar-action-btn" onClick={() => setFontSize((p) => Math.max(10, p - 1))} style={{ padding: "0.15rem 0.3rem" }}>A-</button>
-                    <span style={{ fontSize: "0.75rem", minWidth: "1.2rem", textAlign: "center" }}>{fontSize}</span>
-                    <button className="sidebar-action-btn" onClick={() => setFontSize((p) => Math.min(24, p + 1))} style={{ padding: "0.15rem 0.3rem" }}>A+</button>
-                  </div>
-                </>
-              )}
+            <div className="editor-toolbar">
+              {/* Save — reserves its slot so the toolbar never shifts */}
+              <div className="toolbar-save-slot">
+                {activeFilePath && unsavedChanges[activeFilePath] && (
+                  <button className="btn btn-primary toolbar-save-btn" disabled={savingFile} onClick={saveFile} title="Save (Ctrl+S)">
+                    {savingFile ? "Saving…" : "Save"}
+                  </button>
+                )}
+              </div>
 
-              {/* History button */}
-              <button className="sidebar-action-btn" onClick={() => setShowHistory(true)} title="AI Change History" style={{ padding: "0.4rem" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-                </svg>
-              </button>
-
-              {/* Shortcuts */}
-              <button className="sidebar-action-btn" onClick={() => setShowShortcuts(true)} title="Keyboard Shortcuts" style={{ padding: "0.4rem" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
-              </button>
-
-              {/* Save button */}
-              {activeFilePath && unsavedChanges[activeFilePath] && (
-                <button className="btn btn-primary" disabled={savingFile} onClick={saveFile} style={{ fontSize: "0.75rem", padding: "0.4rem 1rem" }}>
-                  {savingFile ? "Saving..." : "Save (Ctrl+S)"}
+              {/* Editor settings popover */}
+              <div className="toolbar-menu-wrap" ref={settingsRef}>
+                <button
+                  className={`icon-btn ${showSettings ? "active" : ""}`}
+                  onClick={() => setShowSettings((p) => !p)}
+                  title="Editor settings"
+                  aria-haspopup="true"
+                  aria-expanded={showSettings}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
                 </button>
-              )}
+
+                <AnimatePresence>
+                  {showSettings && (
+                    <motion.div
+                      className="toolbar-popover"
+                      initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                      transition={{ duration: 0.14 }}
+                    >
+                      <div className="popover-title">Editor</div>
+
+                      <label className="popover-row">
+                        <span>Word wrap</span>
+                        <button
+                          role="switch"
+                          aria-checked={wordWrap === "on"}
+                          className={`toggle-switch ${wordWrap === "on" ? "on" : ""}`}
+                          onClick={() => setWordWrap((p) => (p === "on" ? "off" : "on"))}
+                        >
+                          <span className="toggle-knob" />
+                        </button>
+                      </label>
+
+                      <label className="popover-row">
+                        <span>Minimap</span>
+                        <button
+                          role="switch"
+                          aria-checked={minimapOn}
+                          className={`toggle-switch ${minimapOn ? "on" : ""}`}
+                          onClick={() => setMinimapOn((p) => !p)}
+                        >
+                          <span className="toggle-knob" />
+                        </button>
+                      </label>
+
+                      <div className="popover-row">
+                        <span>Font size</span>
+                        <div className="stepper">
+                          <button onClick={() => setFontSize((p) => Math.max(10, p - 1))} title="Decrease">−</button>
+                          <span className="stepper-value">{fontSize}</span>
+                          <button onClick={() => setFontSize((p) => Math.min(24, p + 1))} title="Increase">+</button>
+                        </div>
+                      </div>
+
+                      <div className="popover-divider" />
+
+                      <button className="popover-action" onClick={() => { setShowHistory(true); setShowSettings(false); }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        AI change history
+                      </button>
+                      <button className="popover-action" onClick={() => { setShowShortcuts(true); setShowSettings(false); }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="2" y="6" width="20" height="12" rx="2" />
+                          <line x1="7" y1="15" x2="17" y2="15" />
+                        </svg>
+                        Keyboard shortcuts
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <div className="toolbar-sep" />
 
               {/* Preview toggle */}
-              <button className={`btn ${showPreview ? "btn-primary" : "btn-secondary"}`} onClick={() => setShowPreview((p) => !p)} style={{ fontSize: "0.75rem", padding: "0.4rem 0.75rem", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+              <button
+                className={`toolbar-toggle ${showPreview ? "active" : ""}`}
+                onClick={() => setShowPreview((p) => !p)}
+                title="Toggle live preview"
+              >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                   <polygon points="5 3 19 12 5 21 5 3" />
                 </svg>
@@ -1116,11 +1286,15 @@ function EditorContent() {
               </button>
 
               {/* Chat toggle */}
-              <button className={`btn ${showChat ? "btn-primary" : "btn-secondary"}`} onClick={() => setShowChat((p) => !p)} style={{ fontSize: "0.75rem", padding: "0.4rem 1rem", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <button
+                className={`toolbar-toggle ${showChat ? "active" : ""}`}
+                onClick={() => setShowChat((p) => !p)}
+                title="Toggle AI chat (Ctrl+`)"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 </svg>
-                {showChat ? "Hide Chat" : "AI Chat"}
+                AI Chat
               </button>
             </div>
           </div>
@@ -1134,32 +1308,30 @@ function EditorContent() {
                 const isDirty = unsavedChanges[tabPath];
                 const { icon } = getFileIcon(filename, isActive);
                 return (
-                  <div key={tabPath} className={`tab-item ${isActive ? "active" : ""}`} onClick={() => switchActiveTab(tabPath)}>
-                    <span style={{ flexShrink: 0 }}>{icon}</span>
-                    <span>{filename}</span>
-                    {isDirty && <span className="save-indicator-dot tab-dirty-dot" />}
-                    <span className="tab-close-btn" onClick={(e) => closeTab(tabPath, e)} title="Close">
+                  <div
+                    key={tabPath}
+                    className={`tab-item ${isActive ? "active" : ""}`}
+                    onClick={() => switchActiveTab(tabPath)}
+                    onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); closeTab(tabPath); } }}
+                    title={tabPath}
+                  >
+                    <span style={{ flexShrink: 0, display: "inline-flex" }}>{icon}</span>
+                    <span className="tab-label">{filename}</span>
+                    {isDirty && <span className="save-indicator-dot tab-dirty-dot" title="Unsaved changes" />}
+                    <button
+                      type="button"
+                      className="tab-close-btn"
+                      onClick={(e) => closeTab(tabPath, e)}
+                      aria-label={`Close ${filename}`}
+                      title="Close"
+                    >
                       <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                         <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                       </svg>
-                    </span>
+                    </button>
                   </div>
                 );
               })}
-            </div>
-          )}
-
-          {/* Breadcrumbs */}
-          {activeFilePath && (
-            <div className="editor-breadcrumb">
-              <span>{activeProject.name}</span>
-              <span className="separator">&gt;</span>
-              {activeFilePath.split("/").map((part, i, arr) => (
-                <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
-                  <span>{part}</span>
-                  {i < arr.length - 1 && <span className="separator">&gt;</span>}
-                </span>
-              ))}
             </div>
           )}
 
@@ -1229,6 +1401,11 @@ function EditorContent() {
             cursorPosition={cursorPosition}
             activeFilePath={activeFilePath}
             selectedModel={selectedModel}
+            selectionInfo={selectionInfo}
+            wordWrap={wordWrap}
+            onToggleWrap={() => setWordWrap((p) => (p === "on" ? "off" : "on"))}
+            onShowShortcuts={() => setShowShortcuts(true)}
+            previewRunning={showPreview}
           />
         </main>
 
@@ -1309,7 +1486,7 @@ function EditorContent() {
                   ) : (
                     filteredFuzzyFiles.map((path) => (
                       <div key={path} className="spotlight-result-item" onClick={() => { openFile(path); setShowFuzzyPicker(false); }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-cyan)" strokeWidth="2.5">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2.5">
                           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                         </svg>
                         <span>{path}</span>
@@ -1365,6 +1542,9 @@ function EditorContent() {
           checkpoints={checkpoints}
           restoreCheckpoint={restoreCheckpoint}
         />
+
+        {/* Prompt / confirm dialogs */}
+        {dialog}
       </div>
     );
   }
@@ -1385,14 +1565,14 @@ function EditorContent() {
         </div>
         <div className="nav-actions">
           <Link href="/" className="btn btn-secondary">Home</Link>
-          <UserButton appearance={{ elements: { userButtonAvatarBox: { width: "2.25rem", height: "2.25rem", borderRadius: "0.5rem", border: "1px solid var(--border-color)" } } }} />
+          <UserButton />
         </div>
       </header>
 
       <div className="lobby-container">
         <div className="lobby-header">
-          <h1 className="lobby-title">Your Developer Cloud Workspaces</h1>
-          <p className="lobby-subtitle">Provision a new editor session or load an existing project from cloud storage.</p>
+          <h1 className="lobby-title">Projects</h1>
+          <p className="lobby-subtitle">Start a new Next.js app or open an existing one.</p>
         </div>
 
         {/* Templates section */}
@@ -1445,7 +1625,7 @@ function EditorContent() {
               {projects.map((proj, idx) => (
                 <motion.div key={proj.id} className="lobby-card" initial={{ opacity: 0, y: 12, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.2, delay: idx * 0.04 }} layout>
                   <div className="lobby-card-meta">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--color-cyan)" strokeWidth="2" style={{ marginBottom: "0.5rem" }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" strokeWidth="2" style={{ marginBottom: "0.5rem" }}>
                       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                     </svg>
                     <span className="lobby-card-title" title={proj.name}>{proj.name}</span>
@@ -1466,6 +1646,9 @@ function EditorContent() {
           )}
         </div>
       </div>
+
+      {/* Prompt / confirm dialogs */}
+      {dialog}
     </div>
   );
 }

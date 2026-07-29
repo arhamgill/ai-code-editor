@@ -90,7 +90,7 @@ function TreeNode({
           style={{ ...indent, color: "#fff", fontWeight: 600 }}
           onClick={() => toggleFolder(node.path)}
         >
-          <span style={{ fontSize: "0.6rem", color: "var(--color-cyan)", flexShrink: 0 }}>
+          <span style={{ fontSize: "0.6rem", color: "var(--text-muted)", flexShrink: 0 }}>
             {isExpanded ? "▼" : "▶"}
           </span>
           {getFolderIcon(isExpanded)}
@@ -225,44 +225,39 @@ export function FileTree({
         }}
       >
         <div className="sidebar-header">
-          <div style={{ display: "flex", alignItems: "center", width: "100%", gap: "0.25rem" }}>
-            <div className="sidebar-title" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <polyline points="16 18 22 12 16 6" />
-                <polyline points="8 6 2 12 8 18" />
-              </svg>
-              Workspace
-            </div>
-            <div className="sidebar-actions-row">
-              <button className="sidebar-action-btn" onClick={handleNewFile} title="New File">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="12" y1="18" x2="12" y2="12" />
-                  <line x1="9" y1="15" x2="15" y2="15" />
-                </svg>
-              </button>
-              <button className="sidebar-action-btn" onClick={handleNewFolder} title="New Folder">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                  <line x1="12" y1="18" x2="12" y2="12" />
-                  <line x1="9" y1="15" x2="15" y2="15" />
-                </svg>
-              </button>
-              <button className="sidebar-action-btn" onClick={() => setSidebarCollapsed(true)} title="Collapse">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <div style={{ fontSize: "0.8rem", color: "#a5b4fc", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {activeProject.name}
-          </div>
-          <button className="btn btn-secondary" onClick={closeWorkspace} style={{ fontSize: "0.75rem", padding: "0.4rem 0.75rem" }}>
-            Close Project
+          <button className="sidebar-back-btn" onClick={closeWorkspace} title="Back to projects">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
           </button>
+
+          <span className="sidebar-project-name" title={activeProject.name}>
+            {activeProject.name}
+          </span>
+
+          <div className="sidebar-actions-row">
+            <button className="sidebar-action-btn" onClick={handleNewFile} title="New file">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="12" y1="18" x2="12" y2="12" />
+                <line x1="9" y1="15" x2="15" y2="15" />
+              </svg>
+            </button>
+            <button className="sidebar-action-btn" onClick={handleNewFolder} title="New folder">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                <line x1="12" y1="18" x2="12" y2="12" />
+                <line x1="9" y1="15" x2="15" y2="15" />
+              </svg>
+            </button>
+            <button className="sidebar-action-btn" onClick={() => setSidebarCollapsed(true)} title="Collapse sidebar (Ctrl+B)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Search */}

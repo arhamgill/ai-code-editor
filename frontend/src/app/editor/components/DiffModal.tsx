@@ -115,8 +115,8 @@ export function DiffModal({ show, onClose, filePath, before, after }: DiffModalP
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                 <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", fontWeight: 700 }}>
-                  {added > 0 && <span style={{ color: "#34d399" }}>+{added} </span>}
-                  {removed > 0 && <span style={{ color: "#f87171" }}>-{removed}</span>}
+                  {added > 0 && <span style={{ color: "var(--color-success)" }}>+{added} </span>}
+                  {removed > 0 && <span style={{ color: "var(--color-error)" }}>-{removed}</span>}
                 </span>
                 <button className="diff-close-btn" onClick={onClose}>✕</button>
               </div>
