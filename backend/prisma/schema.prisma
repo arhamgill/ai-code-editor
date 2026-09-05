@@ -8,20 +8,104 @@ generator client {
 }
 
 model User {
-  id        String    @id // Holds the Clerk User ID
+  id        String    @id // Clerk user ID
   email     String    @unique
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   projects  Project[]
 }
 
-model Project {
-  id        String   @id @default(uuid())
-  name      String
+/// Deprecated. Left over from an earlier iteration; no application code reads
+/// or writes it. Declared only so Prisma's migration state matches the live
+/// database instead of generating a destructive DROP. Safe to remove with a
+/// migration once you've confirmed you don't want the row it still holds.
+model Snippet {
+  id        String   @id
+  title     String
+  code      String
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@map("Snippet")
+}
+
+model Project {
+  id     String @id @default(uuid())
+  name   String
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Files live at storage/users/<userId>/<id>/ — keyed by id, not name, so a
+  // rename is a pure metadata change and no path is ever attacker-influenced.
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chats       Chat[]
+  checkpoints Checkpoint[]
+
   @@unique([userId, name])
+  @@index([userId, updatedAt])
+}
+
+model Chat {
+  id        String   @id @default(uuid())
+  title     String   @default("New chat")
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages    Message[]
+  checkpoints Checkpoint[]
+
+  @@index([projectId, updatedAt])
+}
+
+model Message {
+  id     String @id @default(uuid())
+  chatId String
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  role    String // "user" | "assistant"
+  content String @db.Text
+
+  /// Tool calls and file-change events emitted while this message streamed.
+  events Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([chatId, createdAt])
+}
+
+/// A full snapshot of every file the agent was about to touch, captured before
+/// a run mutates anything. This is what makes "Restore" trustworthy: the old
+/// client-side version only snapshotted files that happened to be open in a tab.
+model Checkpoint {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  chatId    String?
+  chat      Chat?   @relation(fields: [chatId], references: [id], onDelete: SetNull)
+
+  /// Id of the assistant message this checkpoint restores back past.
+  messageId String?
+  label     String  @default("Before AI edit")
+
+  files     CheckpointFile[]
+  createdAt DateTime         @default(now())
+
+  @@index([projectId, createdAt])
+}
+
+model CheckpointFile {
+  id           String     @id @default(uuid())
+  checkpointId String
+  checkpoint   Checkpoint @relation(fields: [checkpointId], references: [id], onDelete: Cascade)
+
+  path String
+  /// Null means the file did not exist before the run — restoring deletes it.
+  content String? @db.Text
+
+  @@unique([checkpointId, path])
 }

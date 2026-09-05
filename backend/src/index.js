@@ -1,94 +1,44 @@
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-import morgan from "morgan";
-import { clerkMiddleware, clerkClient, getAuth } from "@clerk/express";
+import fs from "fs/promises";
+
+import { createApp, env } from "./app.js";
 import prisma from "./db.js";
-import projectRouter from "./projects.js";
-import agentRouter from "./agent.js";
+import { STORAGE_ROOT } from "./lib/paths.js";
 
-// Load environment variables
-dotenv.config();
+async function main() {
+  await fs.mkdir(STORAGE_ROOT, { recursive: true });
 
-const app = express();
-const PORT = process.env.PORT || 5000;
-const NODE_ENV = process.env.NODE_ENV || "development";
+  const app = createApp();
+  const server = app.listen(env.PORT, () => {
+    console.log(`[server] Forge API listening on http://localhost:${env.PORT} (${env.NODE_ENV})`);
+    console.log(`[server] Project files: ${STORAGE_ROOT}`);
+  });
 
-// Middleware
-app.use(cors());
-app.use(express.json({ limit: "50mb" }));
-app.use(morgan(NODE_ENV === "development" ? "dev" : "combined"));
+  // Long-lived SSE streams will otherwise keep the process alive forever on a
+  // deploy; give in-flight work a few seconds, then stop waiting.
+  const shutdown = async (signal) => {
+    console.log(`[server] ${signal} received, shutting down…`);
+    const force = setTimeout(() => {
+      console.warn("[server] Forcing exit after 10s grace period.");
+      process.exit(1);
+    }, 10_000).unref();
 
-// Apply Clerk middleware globally
-app.use(clerkMiddleware());
+    server.close(async () => {
+      clearTimeout(force);
+      await prisma.$disconnect().catch(() => {});
+      console.log("[server] Closed cleanly.");
+      process.exit(0);
+    });
+  };
 
-// Mount projects API router
-app.use("/api/projects", projectRouter);
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 
-// Mount AI agent router
-app.use("/api/agent", agentRouter);
-
-// Helper to ensure Clerk user is synced with local Postgres DB
-async function getOrSyncUser(userId) {
-  // Check if user exists in database
-  let dbUser = await prisma.user.findUnique({ where: { id: userId } });
-
-  if (!dbUser) {
-    try {
-      // Fetch details from Clerk
-      const clerkUser = await clerkClient.users.getUser(userId);
-      const email = clerkUser.emailAddresses[0]?.emailAddress || `${userId}@clerk-no-email.local`;
-
-      // Provision user in database safely using upsert to avoid race conditions
-      dbUser = await prisma.user.upsert({
-        where: { id: userId },
-        update: {},
-        create: {
-          id: userId,
-          email: email
-        }
-      });
-      console.log(`[Database] Synced user: ${email} (ID: ${userId})`);
-    } catch (err) {
-      console.error("[Database Error] Failed to sync Clerk user to Postgres:", err);
-      throw err;
-    }
-  }
-
-  return dbUser;
+  process.on("unhandledRejection", (reason) => {
+    console.error("[server] Unhandled promise rejection:", reason);
+  });
 }
 
-// Routes
-app.get("/api/health", (req, res) => {
-  res.json({
-    status: "ok",
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-    env: NODE_ENV
-  });
-});
-
-app.get("/api/hello", (req, res) => {
-  res.json({ message: "Hello from the Forge Express backend!" });
-});
-
-// GET /api/me - Authenticated route that syncs the Clerk user into Postgres
-app.get("/api/me", async (req, res) => {
-  const auth = getAuth(req);
-
-  if (!auth.userId) {
-    return res.status(401).json({ error: "Unauthorized", message: "You must be signed in." });
-  }
-
-  try {
-    const dbUser = await getOrSyncUser(auth.userId);
-    res.json({ userId: dbUser.id, email: dbUser.email });
-  } catch (err) {
-    res.status(500).json({ error: "Internal Server Error", message: err.message });
-  }
-});
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`[Server] Express API server running in [${NODE_ENV}] mode on http://localhost:${PORT}`);
+main().catch((err) => {
+  console.error("[server] Failed to start:", err);
+  process.exit(1);
 });

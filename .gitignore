@@ -37,3 +37,12 @@ backend/storage/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Playwright
+e2e/.auth/
+e2e/.artifacts/
+playwright-report/
+test-results/
+
+# Vitest / coverage
+coverage/
