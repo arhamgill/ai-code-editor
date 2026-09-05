@@ -44,6 +44,33 @@ export function useIsMounted(): boolean {
   );
 }
 
+/**
+ * Auth state that also reports when Clerk has failed to turn up.
+ *
+ * `useAuth().isLoaded` stays `false` forever if clerk.accounts.dev can't be
+ * reached — an ad blocker, a corporate proxy, an offline laptop, or a
+ * rate-limited development instance. Anything rendered behind a bare
+ * `!isLoaded` check then spins for eternity, which is exactly how the landing
+ * page ended up with no way into the app.
+ *
+ * Callers should render a usable default immediately and treat `timedOut` as
+ * "Clerk is not coming — say so".
+ */
+export function useAuthGate(timeoutMs = 6000) {
+  const { isLoaded, isSignedIn } = useAuth();
+  const [timedOut, setTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (isLoaded) return;
+    const timer = window.setTimeout(() => setTimedOut(true), timeoutMs);
+    return () => window.clearTimeout(timer);
+  }, [isLoaded, timeoutMs]);
+
+  // Derived rather than reset from the effect: once Clerk arrives the timeout
+  // is irrelevant, and clearing it with a setState would cost a second render.
+  return { isLoaded, isSignedIn: !!isSignedIn, timedOut: timedOut && !isLoaded };
+}
+
 /* ───────────────────────────── Hotkeys ───────────────────────────── */
 
 type HotkeyHandler = (event: KeyboardEvent) => void;

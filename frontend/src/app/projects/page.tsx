@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth, UserButton } from "@clerk/nextjs";
+import { UserButton } from "@clerk/nextjs";
 import {
   ArrowRight,
   FolderOpen,
@@ -15,15 +15,16 @@ import {
 } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
-import { useApi } from "@/lib/hooks";
+import { useApi, useAuthGate } from "@/lib/hooks";
 import type { Project } from "@/lib/types";
 import { TEMPLATES, type Template } from "@/lib/templates";
 import { cn, relativeTime } from "@/lib/utils";
 
+import { AuthPending } from "@/components/auth-pending";
 import { Logo } from "@/components/marketing/logo";
 import { ThemeToggle } from "@/components/theme";
 import { Button, IconButton, LinkButton } from "@/components/ui/button";
-import { Badge, EmptyState, Input, Skeleton, Spinner } from "@/components/ui/primitives";
+import { Badge, EmptyState, Input, Skeleton } from "@/components/ui/primitives";
 import { Modal, useDialogs } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 
@@ -38,7 +39,7 @@ const MAX_UPLOAD_FILES = 3000;
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
 
 export default function ProjectsPage() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, timedOut } = useAuthGate();
   const router = useRouter();
   const api = useApi();
   const toast = useToast();
@@ -262,11 +263,7 @@ export default function ProjectsPage() {
   };
 
   if (!isLoaded || !isSignedIn) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-canvas">
-        <Spinner className="size-5 text-muted" />
-      </div>
-    );
+    return <AuthPending timedOut={timedOut} />;
   }
 
   return (

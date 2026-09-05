@@ -2,7 +2,6 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
 import {
   FilePlus2,
   FileCode2,
@@ -20,7 +19,7 @@ import {
 } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
-import { useApi, useBeforeUnload, useHotkeys, useMediaQuery } from "@/lib/hooks";
+import { useApi, useAuthGate, useBeforeUnload, useHotkeys, useMediaQuery } from "@/lib/hooks";
 import { useAgentChat } from "@/lib/use-agent-chat";
 import { previewSession } from "@/lib/webcontainer";
 import {
@@ -30,6 +29,7 @@ import { useWorkspace } from "@/lib/store/workspace";
 import type { AiModel, FileChange, Project } from "@/lib/types";
 import { cn, fileName, flattenFiles } from "@/lib/utils";
 
+import { AuthPending } from "@/components/auth-pending";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Segmented, Spinner } from "@/components/ui/primitives";
 import { useDialogs } from "@/components/ui/modal";
@@ -51,7 +51,7 @@ type CompactPane = "files" | "editor" | "preview" | "chat";
 
 export default function WorkspacePage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = use(params);
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, timedOut } = useAuthGate();
   const router = useRouter();
   const api = useApi();
   const toast = useToast();
@@ -536,7 +536,9 @@ export default function WorkspacePage({ params }: { params: Promise<{ projectId:
     onViewDiff: viewDiff,
   };
 
-  if (!isLoaded || (!project && !loadError)) {
+  if (!isLoaded) return <AuthPending timedOut={timedOut} />;
+
+  if (!project && !loadError) {
     return (
       <div className="flex h-screen items-center justify-center bg-canvas">
         <Spinner className="size-5 text-muted" />

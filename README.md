@@ -13,7 +13,7 @@ one-click undo for the whole turn.
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-4-000?logo=express&logoColor=white)
 ![Postgres](https://img.shields.io/badge/Postgres-16-4169e1?logo=postgresql&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-115-3fb950)
+![Tests](https://img.shields.io/badge/tests-118-3fb950)
 
 </div>
 
@@ -63,7 +63,7 @@ zustand · WebContainers · Clerk
 **Backend** — Express · Prisma · PostgreSQL · Groq · zod · Helmet ·
 `express-rate-limit`
 
-**Quality** — Vitest (102 unit tests) · Playwright (13 e2e) · ESLint ·
+**Quality** — Vitest (102 unit tests) · Playwright (16 e2e) · ESLint ·
 GitHub Actions · Docker
 
 ---
@@ -211,7 +211,7 @@ The e2e suite needs a Clerk test account:
 ```bash
 npm run e2e:install   # download the browser
 npm run e2e:user      # provision forge.e2e+clerk_test@example.com
-npm run e2e           # 13 specs, ~90s
+npm run e2e           # 16 specs, ~2 min
 ```
 
 It signs in once and reuses the session, drives the real UI against the real
@@ -221,7 +221,7 @@ API, and cleans up the projects it creates.
 |---|--:|---|
 | `backend/src/**/*.test.js` | 65 | path sandboxing, diff, workspace fs, tool-call recovery |
 | `frontend/src/lib/*.test.ts` | 37 | diff engine, fuzzy search, colour normalisation, formatting |
-| `e2e/*.spec.ts` | 13 | auth, templates, editing, saving, palette, error states |
+| `e2e/*.spec.ts` | 16 | auth, templates, editing, saving, palette, error states, offline-Clerk resilience |
 
 ---
 

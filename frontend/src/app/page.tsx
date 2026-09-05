@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth, UserButton } from "@clerk/nextjs";
+import { UserButton } from "@clerk/nextjs";
 import {
   ArrowRight,
   Blocks,
@@ -18,7 +18,7 @@ import { Logo } from "@/components/marketing/logo";
 import { AppPreview } from "@/components/marketing/app-preview";
 import { ThemeToggle } from "@/components/theme";
 import { LinkButton } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/primitives";
+import { useAuthGate } from "@/lib/hooks";
 
 const FEATURES = [
   {
@@ -72,7 +72,20 @@ const STEPS = [
 ];
 
 export default function LandingPage() {
-  const { isLoaded, isSignedIn } = useAuth();
+  /**
+   * Note what this does *not* do: gate the navigation on `isLoaded`.
+   *
+   * Clerk's script can fail to load — ad blocker, proxy, offline, or a
+   * rate-limited dev instance — and `isLoaded` then never flips. Rendering the
+   * call to action behind that check left visitors staring at a skeleton with
+   * no way into the app at all.
+   *
+   * So the signed-out affordance renders immediately and is only *upgraded*
+   * once Clerk confirms a session. Both destinations are correct either way:
+   * /sign-up forwards an already-signed-in user onward, and /projects bounces
+   * a signed-out one to /sign-in.
+   */
+  const { isSignedIn } = useAuthGate();
 
   return (
     <div className="flex min-h-screen flex-col bg-canvas">
@@ -103,9 +116,7 @@ export default function LandingPage() {
 
           <div className="ml-auto flex items-center gap-2.5">
             <ThemeToggle className="hidden sm:inline-flex" />
-            {!isLoaded ? (
-              <Skeleton className="h-8 w-24 rounded-md" />
-            ) : isSignedIn ? (
+            {isSignedIn ? (
               <>
                 <LinkButton href="/projects" size="sm" variant="primary">
                   Open Forge
@@ -156,18 +167,14 @@ export default function LandingPage() {
               </p>
 
               <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-                {!isLoaded ? (
-                  <Skeleton className="h-11 w-40 rounded-lg" />
-                ) : (
-                  <LinkButton
-                    href={isSignedIn ? "/projects" : "/sign-up"}
-                    size="lg"
-                    variant="primary"
-                    iconRight={<ArrowRight className="size-4" />}
-                  >
-                    {isSignedIn ? "Open your workspace" : "Start building free"}
-                  </LinkButton>
-                )}
+                <LinkButton
+                  href={isSignedIn ? "/projects" : "/sign-up"}
+                  size="lg"
+                  variant="primary"
+                  iconRight={<ArrowRight className="size-4" />}
+                >
+                  {isSignedIn ? "Open your workspace" : "Start building free"}
+                </LinkButton>
                 <LinkButton href="#how" size="lg" variant="secondary">
                   See how it works
                 </LinkButton>
